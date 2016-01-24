@@ -69,8 +69,13 @@
 --]]
 
 local ffi = require("ffi")
-local SVGXmlParser = require("SVGXmlParser")
-local xform = require("transform2D")
+local SVGXmlParser = require("ljgraph2D.SVGXmlParser")
+local xform = require("ljgraph2D.transform2D")
+local Bezier = require("ljgraph2D.Bezier")
+local colors = require("ljgraph2D.colors")
+
+local NSVG_RGB = colors.RGBA;
+
 
 local NSVGpaintType = {
 	NSVG_PAINT_NONE = 0,
@@ -275,6 +280,7 @@ typedef struct NSVGattrib
 	char visible;
 } NSVGattrib;
 
+--[[
 typedef struct NSVGparser
 {
 	NSVGattrib attr[NSVG_MAX_ATTR];
@@ -291,20 +297,17 @@ typedef struct NSVGparser
 	char pathFlag;
 	char defsFlag;
 } NSVGparser;
+--]]
 
-#define NSVG_EPSILON (1e-12)
+local NSVG_EPSILON = (1e-12);
 
-static int nsvg__ptInBounds(float* pt, float* bounds)
-{
+local function nsvg__ptInBounds(float* pt, float* bounds)
+
 	return pt[0] >= bounds[0] && pt[0] <= bounds[2] && pt[1] >= bounds[1] && pt[1] <= bounds[3];
-}
+end
 
 
-static double nsvg__evalBezier(double t, double p0, double p1, double p2, double p3)
-{
-	double it = 1.0-t;
-	return it*it*it*p0 + 3.0*it*it*t*p1 + 3.0*it*t*t*p2 + t*t*t*p3;
-}
+
 
 static void nsvg__curveBounds(float* bounds, float* curve)
 {
@@ -350,25 +353,35 @@ static void nsvg__curveBounds(float* bounds, float* curve)
 			}
 		}
 		for (j = 0; j < count; j++) {
-			v = nsvg__evalBezier(roots[j], v0[i], v1[i], v2[i], v3[i]);
+			v = Bezier.evalBezier(roots[j], v0[i], v1[i], v2[i], v3[i]);
 			bounds[0+i] = nsvg__minf(bounds[0+i], (float)v);
 			bounds[2+i] = nsvg__maxf(bounds[2+i], (float)v);
 		}
 	}
 }
 
-static NSVGparser* nsvg__createParser()
-{
-	NSVGparser* p;
-	p = (NSVGparser*)malloc(sizeof(NSVGparser));
-	if (p == NULL) goto error;
-	memset(p, 0, sizeof(NSVGparser));
+
+local NSVGparser = {}
+setmetatable(NSVGparser, {
+	__call = function(self, ...)
+		return self:new(...);
+	end
+})
+local NSVGparser_mt = {
+	__index = NVSGParser;
+}
+
+function NSVGparser.init()
+	local obj = {}
+	setmetatable(obj, NSVGparser_mt);
+
+
 
 	p->image = (NSVGimage*)malloc(sizeof(NSVGimage));
 	if (p->image == NULL) goto error;
 	memset(p->image, 0, sizeof(NSVGimage));
 
-	// Init style
+	-- Init style
 	xform.xformIdentity(p->attr[0].xform);
 	memset(p->attr[0].id, 0, sizeof p->attr[0].id);
 	p->attr[0].fillColor = NSVG_RGB(0,0,0);
@@ -384,16 +397,50 @@ static NSVGparser* nsvg__createParser()
 	p->attr[0].hasFill = 1;
 	p->attr[0].visible = 1;
 
-	return p;
+	
+	return obj;
+end
 
-error:
-	if (p) {
-		if (p->image) free(p->image);
-		free(p);
-	}
-	return NULL;
-}
+function NSVGparser.new(char* input, const char* units, float dpi)
+	local parser = self:init()
 
+	return parser;
+end
+
+function NSVGparser.parse(self, char* input, const char* units, dpi)
+	self.dpi = dpi;
+
+	nsvg__parseXML(input, nsvg__startElement, nsvg__endElement, nsvg__content, self);
+
+	-- Scale to viewBox
+	self:scaleToViewbox(units);
+
+	local ret = p.image;
+	p.image = NULL;
+
+	return ret;
+end
+
+function NSVGparser.ParseFromFile(self, filename, units, dpi)
+	local fp = io.open(filename, "rb")
+	if not fp then 
+		return 
+	end
+
+	local data = fp:read("*a");
+	fp:close();
+
+	local parser = NSVGparser();
+	parser:parse(data, units, dpi)
+
+	local image = nsvgParse(data, units, dpi);
+
+	return image;
+end
+
+
+
+--[[
 static void nsvg__deletePaths(NSVGpath* path)
 {
 	while (path) {
@@ -432,6 +479,7 @@ static void nsvg__deleteParser(NSVGparser* p)
 		free(p);
 	}
 }
+--]]
 
 static void nsvg__resetPath(NSVGparser* p)
 {
@@ -910,8 +958,8 @@ static unsigned int nsvg__parseColorHex(const char* str)
 	return NSVG_RGB(r,g,b);
 }
 
-static unsigned int nsvg__parseColorRGB(const char* str)
-{
+local function nsvg__parseColorRGB(const char* str)
+
 	int r = -1, g = -1, b = -1;
 	char s1[32]="", s2[32]="";
 	sscanf(str + 4, "%d%[%%, \t]%d%[%%, \t]%d", &r, s1, &g, s2, &b);
@@ -920,179 +968,11 @@ static unsigned int nsvg__parseColorRGB(const char* str)
 	} else {
 		return NSVG_RGB(r,g,b);
 	}
-}
+end
 
-typedef struct NSVGNamedColor {
-	const char* name;
-	unsigned int color;
-} NSVGNamedColor;
-
-NSVGNamedColor nsvg__colors[] = {
-
-	{ "red", NSVG_RGB(255, 0, 0) },
-	{ "green", NSVG_RGB( 0, 128, 0) },
-	{ "blue", NSVG_RGB( 0, 0, 255) },
-	{ "yellow", NSVG_RGB(255, 255, 0) },
-	{ "cyan", NSVG_RGB( 0, 255, 255) },
-	{ "magenta", NSVG_RGB(255, 0, 255) },
-	{ "black", NSVG_RGB( 0, 0, 0) },
-	{ "grey", NSVG_RGB(128, 128, 128) },
-	{ "gray", NSVG_RGB(128, 128, 128) },
-	{ "white", NSVG_RGB(255, 255, 255) },
-
-#ifdef NANOSVG_ALL_COLOR_KEYWORDS
-	{ "aliceblue", NSVG_RGB(240, 248, 255) },
-	{ "antiquewhite", NSVG_RGB(250, 235, 215) },
-	{ "aqua", NSVG_RGB( 0, 255, 255) },
-	{ "aquamarine", NSVG_RGB(127, 255, 212) },
-	{ "azure", NSVG_RGB(240, 255, 255) },
-	{ "beige", NSVG_RGB(245, 245, 220) },
-	{ "bisque", NSVG_RGB(255, 228, 196) },
-	{ "blanchedalmond", NSVG_RGB(255, 235, 205) },
-	{ "blueviolet", NSVG_RGB(138, 43, 226) },
-	{ "brown", NSVG_RGB(165, 42, 42) },
-	{ "burlywood", NSVG_RGB(222, 184, 135) },
-	{ "cadetblue", NSVG_RGB( 95, 158, 160) },
-	{ "chartreuse", NSVG_RGB(127, 255, 0) },
-	{ "chocolate", NSVG_RGB(210, 105, 30) },
-	{ "coral", NSVG_RGB(255, 127, 80) },
-	{ "cornflowerblue", NSVG_RGB(100, 149, 237) },
-	{ "cornsilk", NSVG_RGB(255, 248, 220) },
-	{ "crimson", NSVG_RGB(220, 20, 60) },
-	{ "darkblue", NSVG_RGB( 0, 0, 139) },
-	{ "darkcyan", NSVG_RGB( 0, 139, 139) },
-	{ "darkgoldenrod", NSVG_RGB(184, 134, 11) },
-	{ "darkgray", NSVG_RGB(169, 169, 169) },
-	{ "darkgreen", NSVG_RGB( 0, 100, 0) },
-	{ "darkgrey", NSVG_RGB(169, 169, 169) },
-	{ "darkkhaki", NSVG_RGB(189, 183, 107) },
-	{ "darkmagenta", NSVG_RGB(139, 0, 139) },
-	{ "darkolivegreen", NSVG_RGB( 85, 107, 47) },
-	{ "darkorange", NSVG_RGB(255, 140, 0) },
-	{ "darkorchid", NSVG_RGB(153, 50, 204) },
-	{ "darkred", NSVG_RGB(139, 0, 0) },
-	{ "darksalmon", NSVG_RGB(233, 150, 122) },
-	{ "darkseagreen", NSVG_RGB(143, 188, 143) },
-	{ "darkslateblue", NSVG_RGB( 72, 61, 139) },
-	{ "darkslategray", NSVG_RGB( 47, 79, 79) },
-	{ "darkslategrey", NSVG_RGB( 47, 79, 79) },
-	{ "darkturquoise", NSVG_RGB( 0, 206, 209) },
-	{ "darkviolet", NSVG_RGB(148, 0, 211) },
-	{ "deeppink", NSVG_RGB(255, 20, 147) },
-	{ "deepskyblue", NSVG_RGB( 0, 191, 255) },
-	{ "dimgray", NSVG_RGB(105, 105, 105) },
-	{ "dimgrey", NSVG_RGB(105, 105, 105) },
-	{ "dodgerblue", NSVG_RGB( 30, 144, 255) },
-	{ "firebrick", NSVG_RGB(178, 34, 34) },
-	{ "floralwhite", NSVG_RGB(255, 250, 240) },
-	{ "forestgreen", NSVG_RGB( 34, 139, 34) },
-	{ "fuchsia", NSVG_RGB(255, 0, 255) },
-	{ "gainsboro", NSVG_RGB(220, 220, 220) },
-	{ "ghostwhite", NSVG_RGB(248, 248, 255) },
-	{ "gold", NSVG_RGB(255, 215, 0) },
-	{ "goldenrod", NSVG_RGB(218, 165, 32) },
-	{ "greenyellow", NSVG_RGB(173, 255, 47) },
-	{ "honeydew", NSVG_RGB(240, 255, 240) },
-	{ "hotpink", NSVG_RGB(255, 105, 180) },
-	{ "indianred", NSVG_RGB(205, 92, 92) },
-	{ "indigo", NSVG_RGB( 75, 0, 130) },
-	{ "ivory", NSVG_RGB(255, 255, 240) },
-	{ "khaki", NSVG_RGB(240, 230, 140) },
-	{ "lavender", NSVG_RGB(230, 230, 250) },
-	{ "lavenderblush", NSVG_RGB(255, 240, 245) },
-	{ "lawngreen", NSVG_RGB(124, 252, 0) },
-	{ "lemonchiffon", NSVG_RGB(255, 250, 205) },
-	{ "lightblue", NSVG_RGB(173, 216, 230) },
-	{ "lightcoral", NSVG_RGB(240, 128, 128) },
-	{ "lightcyan", NSVG_RGB(224, 255, 255) },
-	{ "lightgoldenrodyellow", NSVG_RGB(250, 250, 210) },
-	{ "lightgray", NSVG_RGB(211, 211, 211) },
-	{ "lightgreen", NSVG_RGB(144, 238, 144) },
-	{ "lightgrey", NSVG_RGB(211, 211, 211) },
-	{ "lightpink", NSVG_RGB(255, 182, 193) },
-	{ "lightsalmon", NSVG_RGB(255, 160, 122) },
-	{ "lightseagreen", NSVG_RGB( 32, 178, 170) },
-	{ "lightskyblue", NSVG_RGB(135, 206, 250) },
-	{ "lightslategray", NSVG_RGB(119, 136, 153) },
-	{ "lightslategrey", NSVG_RGB(119, 136, 153) },
-	{ "lightsteelblue", NSVG_RGB(176, 196, 222) },
-	{ "lightyellow", NSVG_RGB(255, 255, 224) },
-	{ "lime", NSVG_RGB( 0, 255, 0) },
-	{ "limegreen", NSVG_RGB( 50, 205, 50) },
-	{ "linen", NSVG_RGB(250, 240, 230) },
-	{ "maroon", NSVG_RGB(128, 0, 0) },
-	{ "mediumaquamarine", NSVG_RGB(102, 205, 170) },
-	{ "mediumblue", NSVG_RGB( 0, 0, 205) },
-	{ "mediumorchid", NSVG_RGB(186, 85, 211) },
-	{ "mediumpurple", NSVG_RGB(147, 112, 219) },
-	{ "mediumseagreen", NSVG_RGB( 60, 179, 113) },
-	{ "mediumslateblue", NSVG_RGB(123, 104, 238) },
-	{ "mediumspringgreen", NSVG_RGB( 0, 250, 154) },
-	{ "mediumturquoise", NSVG_RGB( 72, 209, 204) },
-	{ "mediumvioletred", NSVG_RGB(199, 21, 133) },
-	{ "midnightblue", NSVG_RGB( 25, 25, 112) },
-	{ "mintcream", NSVG_RGB(245, 255, 250) },
-	{ "mistyrose", NSVG_RGB(255, 228, 225) },
-	{ "moccasin", NSVG_RGB(255, 228, 181) },
-	{ "navajowhite", NSVG_RGB(255, 222, 173) },
-	{ "navy", NSVG_RGB( 0, 0, 128) },
-	{ "oldlace", NSVG_RGB(253, 245, 230) },
-	{ "olive", NSVG_RGB(128, 128, 0) },
-	{ "olivedrab", NSVG_RGB(107, 142, 35) },
-	{ "orange", NSVG_RGB(255, 165, 0) },
-	{ "orangered", NSVG_RGB(255, 69, 0) },
-	{ "orchid", NSVG_RGB(218, 112, 214) },
-	{ "palegoldenrod", NSVG_RGB(238, 232, 170) },
-	{ "palegreen", NSVG_RGB(152, 251, 152) },
-	{ "paleturquoise", NSVG_RGB(175, 238, 238) },
-	{ "palevioletred", NSVG_RGB(219, 112, 147) },
-	{ "papayawhip", NSVG_RGB(255, 239, 213) },
-	{ "peachpuff", NSVG_RGB(255, 218, 185) },
-	{ "peru", NSVG_RGB(205, 133, 63) },
-	{ "pink", NSVG_RGB(255, 192, 203) },
-	{ "plum", NSVG_RGB(221, 160, 221) },
-	{ "powderblue", NSVG_RGB(176, 224, 230) },
-	{ "purple", NSVG_RGB(128, 0, 128) },
-	{ "rosybrown", NSVG_RGB(188, 143, 143) },
-	{ "royalblue", NSVG_RGB( 65, 105, 225) },
-	{ "saddlebrown", NSVG_RGB(139, 69, 19) },
-	{ "salmon", NSVG_RGB(250, 128, 114) },
-	{ "sandybrown", NSVG_RGB(244, 164, 96) },
-	{ "seagreen", NSVG_RGB( 46, 139, 87) },
-	{ "seashell", NSVG_RGB(255, 245, 238) },
-	{ "sienna", NSVG_RGB(160, 82, 45) },
-	{ "silver", NSVG_RGB(192, 192, 192) },
-	{ "skyblue", NSVG_RGB(135, 206, 235) },
-	{ "slateblue", NSVG_RGB(106, 90, 205) },
-	{ "slategray", NSVG_RGB(112, 128, 144) },
-	{ "slategrey", NSVG_RGB(112, 128, 144) },
-	{ "snow", NSVG_RGB(255, 250, 250) },
-	{ "springgreen", NSVG_RGB( 0, 255, 127) },
-	{ "steelblue", NSVG_RGB( 70, 130, 180) },
-	{ "tan", NSVG_RGB(210, 180, 140) },
-	{ "teal", NSVG_RGB( 0, 128, 128) },
-	{ "thistle", NSVG_RGB(216, 191, 216) },
-	{ "tomato", NSVG_RGB(255, 99, 71) },
-	{ "turquoise", NSVG_RGB( 64, 224, 208) },
-	{ "violet", NSVG_RGB(238, 130, 238) },
-	{ "wheat", NSVG_RGB(245, 222, 179) },
-	{ "whitesmoke", NSVG_RGB(245, 245, 245) },
-	{ "yellowgreen", NSVG_RGB(154, 205, 50) },
-#endif
-};
-
-static unsigned int nsvg__parseColorName(const char* str)
-{
-	int i, ncolors = sizeof(nsvg__colors) / sizeof(NSVGNamedColor);
-
-	for (i = 0; i < ncolors; i++) {
-		if (strcmp(nsvg__colors[i].name, str) == 0) {
-			return nsvg__colors[i].color;
-		}
-	}
-
-	return NSVG_RGB(128, 128, 128);
-}
+local function nsvg__parseColorName(name)
+	return SVGColors[name] or SNGColors.NSVG_RGB(128, 128, 128);
+end
 
 static unsigned int nsvg__parseColor(const char* str)
 {
@@ -1103,6 +983,7 @@ static unsigned int nsvg__parseColor(const char* str)
 		return nsvg__parseColorHex(str);
 	else if (len >= 4 && str[0] == 'r' && str[1] == 'g' && str[2] == 'b' && str[3] == '(')
 		return nsvg__parseColorRGB(str);
+
 	return nsvg__parseColorName(str);
 }
 
@@ -1115,43 +996,46 @@ static float nsvg__parseOpacity(const char* str)
 	return val;
 }
 
-static int nsvg__parseUnits(const char* units)
-{
+local function nsvg__parseUnits(units)
+
 	if (units[0] == 'p' && units[1] == 'x')
-		return NSVG_UNITS_PX;
-	else if (units[0] == 'p' && units[1] == 't')
-		return NSVG_UNITS_PT;
-	else if (units[0] == 'p' && units[1] == 'c')
-		return NSVG_UNITS_PC;
-	else if (units[0] == 'm' && units[1] == 'm')
-		return NSVG_UNITS_MM;
-	else if (units[0] == 'c' && units[1] == 'm')
-		return NSVG_UNITS_CM;
-	else if (units[0] == 'i' && units[1] == 'n')
-		return NSVG_UNITS_IN;
-	else if (units[0] == '%')
-		return NSVG_UNITS_PERCENT;
-	else if (units[0] == 'e' && units[1] == 'm')
-		return NSVG_UNITS_EM;
-	else if (units[0] == 'e' && units[1] == 'x')
-		return NSVG_UNITS_EX;
-	return NSVG_UNITS_USER;
-}
+		return NSVGunits.NSVG_UNITS_PX;
+	elseif (units[0] == 'p' && units[1] == 't')
+		return NSVGunits.NSVG_UNITS_PT;
+	elseif (units[0] == 'p' && units[1] == 'c')
+		return NSVGunits.NSVG_UNITS_PC;
+	elseif (units[0] == 'm' && units[1] == 'm')
+		return NSVGunits.NSVG_UNITS_MM;
+	elseif (units[0] == 'c' && units[1] == 'm')
+		return NSVGunits.NSVG_UNITS_CM;
+	elseif (units[0] == 'i' && units[1] == 'n')
+		return NSVGunits.NSVG_UNITS_IN;
+	elseif (units[0] == '%')
+		return NSVGunits.NSVG_UNITS_PERCENT;
+	elseif (units[0] == 'e' && units[1] == 'm')
+		return NSVGunits.NSVG_UNITS_EM;
+	elseif (units[0] == 'e' && units[1] == 'x')
+		return NSVGunits.NSVG_UNITS_EX;
+	
+	return NSVGunits.NSVG_UNITS_USER;
+end
 
-static NSVGcoordinate nsvg__parseCoordinateRaw(const char* str)
-{
-	NSVGcoordinate coord = {0, NSVG_UNITS_USER};
-	char units[32]="";
-	sscanf(str, "%f%s", &coord.value, units);
+local function  nsvg__parseCoordinateRaw(const char* str)
+	local coord = ffi.new("NSVGcoordinate", {0, NSVGunits.NSVG_UNITS_USER});
+	local units = nil;
+
+	--sscanf(str, "%f%s", &coord.value, units);
+	coord.value, units = str:match("(%d+)(%g+)")
 	coord.units = nsvg__parseUnits(units);
+	
 	return coord;
-}
+end
 
-static NSVGcoordinate nsvg__coord(float v, int units)
-{
+local function nsvg__coord(float v, int units)
 	NSVGcoordinate coord = {v, units};
+	
 	return coord;
-}
+end
 
 static float nsvg__parseCoordinate(NSVGparser* p, const char* str, float orig, float length)
 {
@@ -1861,6 +1745,7 @@ static void nsvg__pathArcTo(NSVGparser* p, float* cpx, float* cpy, float* args, 
 	*cpy = y2;
 }
 
+
 static void nsvg__parsePath(NSVGparser* p, const char** attr)
 {
 	const char* s = NULL;
@@ -2388,25 +2273,27 @@ static void nsvg__startElement(void* ud, const char* el, const char** attr)
 	}
 }
 
-static void nsvg__endElement(void* ud, const char* el)
-{
+NVSVGParser.nsvg__endElement(self, el)
+
 	NSVGparser* p = (NSVGparser*)ud;
 
-	if (strcmp(el, "g") == 0) {
+	if (strcmp(el, "g") == 0) then
 		nsvg__popAttr(p);
-	} else if (strcmp(el, "path") == 0) {
-		p->pathFlag = 0;
-	} else if (strcmp(el, "defs") == 0) {
-		p->defsFlag = 0;
-	}
-}
+	elseif (strcmp(el, "path") == 0) then
+		p.pathFlag = 0;
+	elseif (strcmp(el, "defs") == 0) then
+		p.defsFlag = 0;
+	end
+end
 
+--[[
 static void nsvg__content(void* ud, const char* s)
 {
 	NSVG_NOTUSED(ud);
 	NSVG_NOTUSED(s);
 	// empty
 }
+--]]
 
 static void nsvg__imageBounds(NSVGparser* p, float* bounds)
 {
@@ -2448,8 +2335,8 @@ function SVGParser.nsvg__scaleGradient(NSVGgradient* grad, float tx, float ty, f
 	grad->xform[5] += ty*sx;
 }
 
-static void nsvg__scaleToViewbox(NSVGparser* p, const char* units)
-{
+function NVSGParser.scaleToViewbox(NSVGparser* p, units)
+
 	NSVGshape* shape;
 	NSVGpath* path;
 	float tx, ty, sx, sy, us, bounds[4], t[6], avgs;
@@ -2539,59 +2426,8 @@ static void nsvg__scaleToViewbox(NSVGparser* p, const char* units)
 	}
 }
 
-NSVGimage* nsvgParse(char* input, const char* units, float dpi)
-{
-	NSVGparser* p;
-	NSVGimage* ret = 0;
 
-	p = nsvg__createParser();
-	if (p == NULL) {
-		return NULL;
-	}
-	p->dpi = dpi;
-
-	nsvg__parseXML(input, nsvg__startElement, nsvg__endElement, nsvg__content, p);
-
-	// Scale to viewBox
-	nsvg__scaleToViewbox(p, units);
-
-	ret = p->image;
-	p->image = NULL;
-
-	nsvg__deleteParser(p);
-
-	return ret;
-}
-
-NSVGimage* nsvgParseFromFile(const char* filename, const char* units, float dpi)
-{
-	FILE* fp = NULL;
-	size_t size;
-	char* data = NULL;
-	NSVGimage* image = NULL;
-
-	fp = fopen(filename, "rb");
-	if (!fp) goto error;
-	fseek(fp, 0, SEEK_END);
-	size = ftell(fp);
-	fseek(fp, 0, SEEK_SET);
-	data = (char*)malloc(size+1);
-	if (data == NULL) goto error;
-	if (fread(data, 1, size, fp) != size) goto error;
-	data[size] = '\0';	// Must be null terminated.
-	fclose(fp);
-	image = nsvgParse(data, units, dpi);
-	free(data);
-
-	return image;
-
-error:
-	if (fp) fclose(fp);
-	if (data) free(data);
-	if (image) nsvgDelete(image);
-	return NULL;
-}
-
+--[[
 void nsvgDelete(NSVGimage* image)
 {
 	NSVGshape *snext, *shape;
@@ -2607,3 +2443,4 @@ void nsvgDelete(NSVGimage* image)
 	}
 	free(image);
 }
+--]]
