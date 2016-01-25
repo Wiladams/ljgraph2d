@@ -15,6 +15,17 @@ local function lineMag(x1, y1, x2, y2)
 	return sqrt(x*x+y*y);
 end
 
+local function normalize(x, y)
+	local d = sqrt(x*x + y*y);
+	if (d > 1e-6) then
+		local id = 1.0 / d;
+		x = x * id;
+		y = y * id;
+	end
+
+	return d, x, y;
+end
+
 local function pointLineIntersection(x1, y1, x2, y2, x3, y3)
 	local mag = lineMag(x1, y1, x2, y2)
 	local u = ((x3 - x1)*(x2-x1) + (y3-y1)*(y2-y1))/(mag*mag)
@@ -30,6 +41,14 @@ local function pointLineDistance(x1, y1, x2, y2, x3, y3)
 	return lineMag(x3, y3, x, y)
 end
 
+-- determine if two points are equal, within a specified tolerance
+local function pointEquals(x1, y1, x2, y2, tol)
+	local dx = x2 - x1;
+	local dy = y2 - y1;
+	
+	return dx*dx + dy*dy < tol*tol;
+end
+
 function RANGEMAP(x, a, b, c, d)
 	return c + ((x-a)/(b-a)*(d-c))
 end
@@ -42,7 +61,7 @@ local function round(n)
 	return ceil(n-0.5)
 end
 
-local function CLIP(x, a, b)
+local function clamp(x, a, b)
 	if x < a then return a end
 	if x > b then return b end
 
@@ -58,11 +77,14 @@ end
 
 
 return {
-	CLIP = CLIP;
+	CLAMP = clamp;
 
 	lineMag = lineMag;
+
+	pointEquals = pointEquals;
 	pointLineIntersection = pointLineIntersection;
 	pointLineDistance = pointLineDistance;
+	
 	RANGEMAP = RANGEMAP;
 	round = round;
 	sgn = sgn;
