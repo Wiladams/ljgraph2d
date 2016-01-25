@@ -14,6 +14,22 @@ end
 -- Simple path parsing
 -- http://stackoverflow.com/questions/16863540/parse-svg-path-definition-d-in-lua
 --
+function parsePath2(input)
+    local output, line = {}, {};
+    output[#output+1] = line;
+
+    input = input:gsub("([^%s,;])([%a])", "%1 %2"); -- Convert "100D" to "100 D"
+    input = input:gsub("([%a])([^%s,;])", "%1 %2"); -- Convert "D100" to "D 100"
+    for v in input:gmatch("([^%s,;]+)") do
+        if not tonumber(v) and #line > 0 then
+            line = {};
+            output[#output+1] = line;
+        end
+        line[#line+1] = v;
+    end
+    return output;
+end
+
 function parsePath(input)
     local out = {};
 
