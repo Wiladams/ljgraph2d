@@ -7,7 +7,7 @@ typedef struct SVGedge {
 	struct SVGedge* next;
 } SVGedge_t;
 ]]
-local SVGEdge = ffi.typeof("struct SVGEdge");
+local SVGEdge = ffi.typeof("struct SVGedge");
 
 ffi.cdef[[
 typedef struct SVGpoint {
@@ -18,7 +18,7 @@ typedef struct SVGpoint {
 	unsigned char flags;
 } SVGpoint_t;
 ]]
-local SVGPoint = ffi.typeof("struct SVGPoint");
+local SVGPoint = ffi.typeof("struct SVGpoint");
 
 return {
 	SVGEdge = SVGEdge;

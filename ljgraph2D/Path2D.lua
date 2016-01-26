@@ -9,6 +9,7 @@ local abs = math.abs;
 local floor = math.floor;
 
 local maths = require("ljgraph2D.maths")
+local normalize = maths.normalize;
 local sgn = maths.sgn;
 local round = maths.round;
 local pointsEquals = maths.pointsEquals;
@@ -106,7 +107,7 @@ function Path2D.flattenCubicBez(self,
 								   x1,  y1,  x2,  y2,
 								   x3,  y3,  x4,  y4,
 								  level, atype)
-end
+
 	local x12,y12,x23,y23,x34,y34,x123,y123;
 	local x234,y234,x1234,y1234;
 
@@ -142,7 +143,76 @@ end
 	self:flattenCubicBez(x1234,y1234, x234,y234, x34,y34, x4,y4, level+1, atype);
 end
 
+local function initClosed(left, right, p0, p1, lineWidth)
 
+	local w = lineWidth * 0.5;
+	local dx = p1.x - p0.x;
+	local dy = p1.y - p0.y;
+	local len, dx, dy = normalize(dx, dy);
+	local px = p0.x + dx*len*0.5;
+	local py = p0.y + dy*len*0.5;
+	local dlx = dy;
+	local dly = -dx;
+	local lx = px - dlx*w; 
+	local ly = py - dly*w;
+	local rx = px + dlx*w; 
+	local ry = py + dly*w;
+	
+	left.x = lx; 
+	left.y = ly;
+	right.x = rx; 
+	right.y = ry;
+end
+
+function Path2D.buttCap(self, left, right, p, dx, dy, lineWidth, connect)
+
+	local w = lineWidth * 0.5;
+	local px = p.x;
+	local py = p.y;
+	local dlx = dy;
+	local dly = -dx;
+	local lx = px - dlx*w;
+	local ly = py - dly*w;
+	local rx = px + dlx*w;
+	local ry = py + dly*w;
+
+	self:addEdge(lx, ly, rx, ry);
+
+	if connect then
+		self:addEdge(left.x, left.y, lx, ly);
+		self:addEdge(rx, ry, right.x, right.y);
+	end
+	
+	left.x = lx; 
+	left.y = ly;
+	right.x = rx; 
+	right.y = ry;
+end
+
+function Path2D:squareCap(self, left, right, p, dx, dy, lineWidth, connect)
+
+	local w = lineWidth * 0.5;
+	local px = p.x - dx*w;
+	local py = p.y - dy*w;
+	local dlx = dy;
+	local dly = -dx;
+	local lx = px - dlx*w;
+	local ly = py - dly*w;
+	local rx = px + dlx*w;
+	local ry = py + dly*w;
+
+	self:addEdge(lx, ly, rx, ry);
+
+	if connect then
+		self:addEdge(left.x, left.y, lx, ly);
+		self:addEdge(rx, ry, right.x, right.y);
+	end
+
+	left.x = lx; 
+	left.y = ly;
+	right.x = rx; 
+	right.y = ry;
+end
 
 
 return Path2D
