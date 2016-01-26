@@ -7,6 +7,7 @@ local rshift, lshift, bor, band = bit.rshift, bit.lshift, bit.bor, bit.band
 
 local abs = math.abs;
 local floor = math.floor;
+local PI = math.pi;
 
 local maths = require("ljgraph2D.maths")
 local normalize = maths.normalize;
@@ -202,6 +203,54 @@ function Path2D:squareCap(self, left, right, p, dx, dy, lineWidth, connect)
 	local ry = py + dly*w;
 
 	self:addEdge(lx, ly, rx, ry);
+
+	if connect then
+		self:addEdge(left.x, left.y, lx, ly);
+		self:addEdge(rx, ry, right.x, right.y);
+	end
+
+	left.x = lx; 
+	left.y = ly;
+	right.x = rx; 
+	right.y = ry;
+end
+
+function Path2D.roundCap(self, left, right, p, dx, dy, lineWidth, ncap, connect)
+
+	local w = lineWidth * 0.5;
+	local px = p.x;
+	local py = p.y;
+	local dlx = dy;
+	local dly = -dx;
+	local lx = 0;
+	local ly = 0;
+	local rx = 0;
+	local ry = 0;
+	local prevx = 0;
+	local prevy = 0;
+
+	for i = 0, ncap-1 do
+		local a = i/(ncap-1)*PI;
+		local ax = cos(a) * w;
+		local ay = sinf(a) * w;
+		local x = px - dlx*ax - dx*ay;
+		local y = py - dly*ax - dy*ay;
+
+		if i > 0 then
+			self:addEdge(prevx, prevy, x, y);
+		end
+
+		prevx = x;
+		prevy = y;
+
+		if (i == 0) then
+			lx = x; 
+			ly = y;
+		elseif i == ncap-1 then
+			rx = x; 
+			ry = y;
+		end
+	end
 
 	if connect then
 		self:addEdge(left.x, left.y, lx, ly);
