@@ -460,7 +460,7 @@ function Path2D.expandStroke(self, NSVGpoint* points, npoints, closed, lineJoin,
 		local dx = p1->x - p0->x;
 		local dy = p1->y - p0->y;
 		local _, dx, dy = maths.normalize(dx, dy);
-		
+
 		if (lineCap == NSVG_CAP_BUTT)
 			nsvg__buttCap(r, &left, &right, p0, dx, dy, lineWidth, 0);
 		else if (lineCap == NSVG_CAP_SQUARE)
@@ -483,22 +483,24 @@ function Path2D.expandStroke(self, NSVGpoint* points, npoints, closed, lineJoin,
 		p0 = p1++;
 	}
 
-	if (closed) {
-		// Loop it
+	if (closed) then
+		-- Loop it
 		nsvg__addEdge(r, firstLeft.x, firstLeft.y, left.x, left.y);
 		nsvg__addEdge(r, right.x, right.y, firstRight.x, firstRight.y);
-	} else {
-		// Add cap
-		float dx = p1->x - p0->x;
-		float dy = p1->y - p0->y;
-		nsvg__normalize(&dx, &dy);
-		if (lineCap == NSVG_CAP_BUTT)
+	else
+		-- Add cap
+		local dx = p1.x - p0.x;
+		local dy = p1.y - p0.y;
+		_, dx, dy = normalize(dx, dy);
+
+		if (lineCap == NSVG_CAP_BUTT) then
 			nsvg__buttCap(r, &right, &left, p1, -dx, -dy, lineWidth, 1);
-		else if (lineCap == NSVG_CAP_SQUARE)
+		elseif (lineCap == NSVG_CAP_SQUARE) then
 			nsvg__squareCap(r, &right, &left, p1, -dx, -dy, lineWidth, 1);
-		else if (lineCap == NSVG_CAP_ROUND)
+		elseif (lineCap == NSVG_CAP_ROUND) then
 			nsvg__roundCap(r, &right, &left, p1, -dx, -dy, lineWidth, ncap, 1);
-	}
-}
+		end
+	end
+end
 
 return Path2D
