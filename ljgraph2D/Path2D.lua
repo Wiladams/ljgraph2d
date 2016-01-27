@@ -14,18 +14,47 @@ local maths = require("ljgraph2D.maths")
 local normalize = maths.normalize;
 local sgn = maths.sgn;
 local round = maths.round;
-local pointsEquals = maths.pointsEquals;
+local pointEquals = maths.pointEquals;
 
 local SVGTypes = require("ljgraph2D.SVGTypes")
 local int = ffi.typeof("int")
 
-local Path2D = {
-	SVGpointFlags = {
-		SVG_PT_CORNER = 0x01,
-		SVG_PT_BEVEL = 0x02,
-		SVG_PT_LEFT = 0x04,
-	};
 
+local function cmpEdge(a, b)
+
+	--NSVGedge* a = (NSVGedge*)p;
+	--NSVGedge* b = (NSVGedge*)q;
+
+	if (a.y0 < b.y0) then
+		return -1;
+	end
+
+	if (a.y0 > b.y0) then
+		return  1;
+	end
+
+	return 0;
+end
+
+
+local Path2D = {
+	PointFlags = {
+		CORNER = 0x01,
+		BEVEL = 0x02,
+		LEFT = 0x04,
+	};
+	
+	LineJoin = {
+		MITER = 0,
+		ROUND = 1,
+		BEVEL = 2,
+	};
+	
+	LineCap = {
+		BUTT = 0,
+		ROUND = 1,
+		SQUARE = 2,
+	};
 }
 setmetatable(Path2D, {
 	__call = function(self, ...)
@@ -61,7 +90,7 @@ function  Path2D.addPathPoint(self, x, y, flags)
 	-- a number of times for a curve
 	if #self.points > 0 then
 		local pt = self.points[#self.points];
-		if pointsEquals(pt.x,pt.y, x,y, self.distTol) then
+		if pointEquals(pt.x,pt.y, x,y, self.distTol) then
 			pt.flags = bor(pt.flags, flags);
 			return;
 		end
@@ -308,7 +337,7 @@ function Path2D.miterJoin(self, left, right, p0, p1, lineWidth)
 	local lx0, rx0, lx1, rx1 = 0,0,0,0;
 	local ly0, ry0, ly1, ry1 = 0,0,0,0;
 
-	if band(p1.flags, Path2D.SVGpointFlags.NSVG_PT_LEFT) ~= 0 then
+	if band(p1.flags, Path2D.PointFlags.LEFT) ~= 0 then
 		lx0 = p1.x - p1.dmx * w;
 		lx1 = lx0;
 		ly0 = p1.y - p1.dmy * w;
@@ -426,29 +455,30 @@ end
 	Ancillary
 --]]
 
-function Path2D.expandStroke(self, NSVGpoint* points, npoints, closed, lineJoin, lineCap, lineWidth)
+function Path2D.expandStroke(self, points, npoints, closed, lineJoin, lineCap, lineWidth)
 
 	local ncap = maths.curveDivs(lineWidth*0.5, PI, self.tessTol);	-- Calculate divisions per half circle.
-	NSVGpoint left = {0,0,0,0,0,0,0,0}, 
-	right = {0,0,0,0,0,0,0,0}, 
-	firstLeft = {0,0,0,0,0,0,0,0}, 
-	firstRight = {0,0,0,0,0,0,0,0};
-	NSVGpoint* p0, *p1;
-	int j, s, e;
+	local left = SVGPoint({0,0,0,0,0,0,0,0}); 
+	local right = SVGPoint({0,0,0,0,0,0,0,0});
+	local firstLeft = SVGPoint({0,0,0,0,0,0,0,0}); 
+	local firstRight = SVGPoint({0,0,0,0,0,0,0,0});
+	local p0 = nil;
+	local p1 = nil;
+	local j, s, e = 0,0,0;
 
 	-- Build stroke edges
 	if closed then
 		-- Looping
-		p0 = &points[npoints-1];
-		p1 = &points[0];
+		p0 = points[#points];
+		p1 = points[1];
 		s = 0;
-		e = npoints;
+		e = #points;
 	else 
 		-- Add cap
-		p0 = &points[0];
-		p1 = &points[1];
+		p0 = points[1];
+		p1 = points[2];
 		s = 1;
-		e = npoints-1;
+		e = #points;
 	end
 
 	if closed then
@@ -457,50 +487,128 @@ function Path2D.expandStroke(self, NSVGpoint* points, npoints, closed, lineJoin,
 		firstRight = right;
 	else
 		-- Add cap
-		local dx = p1->x - p0->x;
-		local dy = p1->y - p0->y;
+		local dx = p1.x - p0.x;
+		local dy = p1.y - p0.y;
 		local _, dx, dy = maths.normalize(dx, dy);
 
-		if (lineCap == NSVG_CAP_BUTT)
-			nsvg__buttCap(r, &left, &right, p0, dx, dy, lineWidth, 0);
-		else if (lineCap == NSVG_CAP_SQUARE)
-			nsvg__squareCap(r, &left, &right, p0, dx, dy, lineWidth, 0);
-		else if (lineCap == NSVG_CAP_ROUND)
-			nsvg__roundCap(r, &left, &right, p0, dx, dy, lineWidth, ncap, 0);
-	}
+		if lineCap == Path2D.LineCap.BUTT then
+			self:buttCap(left, right, p0, dx, dy, lineWidth, 0);
+		elseif lineCap == Path2D.LineCap.SQUARE then
+			self:squareCap(left, right, p0, dx, dy, lineWidth, 0);
+		elseif lineCap == Path2D.LineCap.ROUND then
+			self:roundCap(left, right, p0, dx, dy, lineWidth, ncap, 0);
+		end
+	end
 
-	for (j = s; j < e; ++j) {
-		if (p1->flags & NSVG_PT_CORNER) {
-			if (lineJoin == NSVG_JOIN_ROUND)
-				nsvg__roundJoin(r, &left, &right, p0, p1, lineWidth, ncap);
-			else if (lineJoin == NSVG_JOIN_BEVEL || (p1->flags & NSVG_PT_BEVEL))
-				nsvg__bevelJoin(r, &left, &right, p0, p1, lineWidth);
+	for j = s, e-1 do
+		if band(p1.flags, Path2D.PointFlags.CORNER)~=0 then
+			if lineJoin == Path2D.LineJoin.ROUND then
+				self:roundJoin(left, right, p0, p1, lineWidth, ncap);
+			elseif (lineJoin == Path2D.LineJoin.BEVEL) or (band(p1.flags, Path2D.PointFlags.BEVEL)~=0) then
+				self:bevelJoin(left, right, p0, p1, lineWidth);
 			else
-				nsvg__miterJoin(r, &left, &right, p0, p1, lineWidth);
-		} else {
-			nsvg__straightJoin(r, &left, &right, p1, lineWidth);
-		}
-		p0 = p1++;
-	}
+				self:miterJoin(left, right, p0, p1, lineWidth);
+			end
+		else 
+			self:straightJoin(left, right, p1, lineWidth);
+		end
+		p0 = p1 + 1;
+	end
 
-	if (closed) then
+	if closed then
 		-- Loop it
-		nsvg__addEdge(r, firstLeft.x, firstLeft.y, left.x, left.y);
-		nsvg__addEdge(r, right.x, right.y, firstRight.x, firstRight.y);
+		self:addEdge(firstLeft.x, firstLeft.y, left.x, left.y);
+		self:addEdge(right.x, right.y, firstRight.x, firstRight.y);
 	else
 		-- Add cap
 		local dx = p1.x - p0.x;
 		local dy = p1.y - p0.y;
 		_, dx, dy = normalize(dx, dy);
 
-		if (lineCap == NSVG_CAP_BUTT) then
-			nsvg__buttCap(r, &right, &left, p1, -dx, -dy, lineWidth, 1);
-		elseif (lineCap == NSVG_CAP_SQUARE) then
-			nsvg__squareCap(r, &right, &left, p1, -dx, -dy, lineWidth, 1);
-		elseif (lineCap == NSVG_CAP_ROUND) then
-			nsvg__roundCap(r, &right, &left, p1, -dx, -dy, lineWidth, ncap, 1);
+		if (lineCap == Path2D.LineCap.BUTT) then
+			self:buttCap(right, left, p1, -dx, -dy, lineWidth, 1);
+		elseif (lineCap == Path2D.LineCap.SQUARE) then
+			self:squareCap(right, left, p1, -dx, -dy, lineWidth, 1);
+		elseif (lineCap == Path2D.LineCap.ROUND) then
+			self:roundCap(right, left, p1, -dx, -dy, lineWidth, ncap, 1);
 		end
 	end
 end
+
+function Path2D.prepareStroke(miterLimit, lineJoin)
+	local p0idx = #self.points;
+	local p1idx = 1;
+	local p0 = nil;
+	local p1 = nil;
+
+	for i = 1, #self.points do
+		p0 = self.points[p0idx];
+		p1 = self.points[p1idx];
+		
+		-- Calculate segment direction and length
+		p0.dx = p1.x - p0.x;
+		p0.dy = p1.y - p0.y;
+		p0.len, p0.dx, p0.dy = normalize(p0.dx, p0.dy);
+		
+		-- Advance
+		p0idx = p1idx;
+		p1idx = p1idx + 1;
+	end
+
+	-- calculate joins
+	p0idx = #self.points;
+	p1idx = 1;
+
+	for j = 1, #self.points do
+		p0 = self.points[p0idx];
+		p1 = self.points[p1idx];
+
+		local dlx0 = p0.dy;
+		local dly0 = -p0.dx;
+		local dlx1 = p1.dy;
+		local dly1 = -p1.dx;
+		
+		-- Calculate extrusions
+		p1.dmx = (dlx0 + dlx1) * 0.5;
+		p1.dmy = (dly0 + dly1) * 0.5;
+		local dmr2 = p1.dmx*p1.dmx + p1.dmy*p1.dmy;
+		
+		if dmr2 > 0.000001 then
+			local s2 = 1.0 / dmr2;
+			if s2 > 600.0 then
+				s2 = 600.0;
+			end
+			p1.dmx = p1.dmx * s2;
+			p1.dmy = p1.dmy * s2;
+		end
+
+		-- Clear flags, but keep the corner.
+		if band(p1.flags, Path2D.PointFlags.CORNER) ~= 0 then
+			p1.flags = Path2D.PointFlags.CORNER
+		else
+			p1.flags = 0;
+		end
+
+		-- Keep track of left turns.
+		local cross = p1.dx * p0.dy - p0.dx * p1.dy;
+		if cross > 0.0 then
+			p1.flags = bor(p1.flags,Path2D.PointFlags.LEFT);
+		end
+
+		-- Check to see if the corner needs to be beveled.
+		if band(p1.flags, Path2D.PointFlags.CORNER)~= 0 then
+			if ((dmr2 * miterLimit*miterLimit) < 1.0 or lineJoin == Path2D.LineJoin.BEVEL or lineJoin == Path2D.LineJoin.ROUND) then
+				p1.flags = bor(p1.flags,Path2D.PointFlags.BEVEL);
+			end
+		end
+
+
+		-- Advance
+		--p0 = p1++;
+		p0idx = p1idx;
+		p1idx = p1idx + 1;
+	end
+end
+
 
 return Path2D

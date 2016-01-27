@@ -90,17 +90,9 @@ local NSVGspreadType = {
 	NSVG_SPREAD_REPEAT = 2,
 };
 
-local  NSVGlineJoin = {
-	NSVG_JOIN_MITER = 0,
-	NSVG_JOIN_ROUND = 1,
-	NSVG_JOIN_BEVEL = 2,
-};
 
-local NSVGlineCap = {
-	NSVG_CAP_BUTT = 0,
-	NSVG_CAP_ROUND = 1,
-	NSVG_CAP_SQUARE = 2,
-};
+
+
 
 local NSVGfillRule {
 	NSVG_FILLRULE_NONZERO = 0,

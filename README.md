@@ -4,18 +4,21 @@
 This project presents a 2D graphics package written in pure 
 LuaJIT.  There are no external dependencies.
 
-The basic structure is
+The design goal of the 2D Renderer is to have enough features to render graphics
+as complex as what is found in the SVG file format.  Bezier curves, transparency,
+thick lines, paint, and the like.
 
-Surface - Lowest level representation of something to be drawn on.
+As such, there are path and shape objects as primitives, which a parser can leverage
+to support SVG graphic objects.  The lowest level handling of drawing is represented
+by the Surface object.  In its basic form, the Surface represents a memory back frame
+buffer.  It will handle simple tasks such as setting pixels, drawing horizontal lines
+and the like.  
 
-DrawingContext - Represents the retained state of the Raster2D environment.  This is held as a separate object as it might be
-desirable to build a state stack, and thus you want to be able to
-easily encapsulate state in a simple object.
+At a higher level, there is the Raster2D object.  For regular drawing, this object
+deals with drawing state, line clipping, current location and the like. 
 
-Raster2D - An instance of this class represents the public API for drawing.
-
-There are various support objects for dealing with various file formats
-such as .bmp and .svg.  This is not a general purpose image viewer,
-but these formats are very useful to play with.
-
-
+The separation of these concerns makes it possible to easily compose modules.
+The routines that support SVG shapes, are the same to support True Type Fonts, since
+those turn into simple bezier curves, lines and polygons.  Similarly, just about
+any graphics API can be supported with an API specific skin, while maintaining 
+a small core.

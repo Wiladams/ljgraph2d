@@ -89,7 +89,7 @@ end
 
 
 return {
-	CLAMP = clamp;
+	clamp = clamp;
 	curveDivs = curveDivs;
 
 	lineMag = lineMag;
