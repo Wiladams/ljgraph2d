@@ -316,11 +316,11 @@ end
 
 -- Text Drawing
 function Raster2D.fillText(self, x, y, text, font, value)
-	font:scan_str(self.surface, x, y, text, value)
+	font:scan_str(rself.surface, x, y, text, value)
 end
 
 
--- Line Drawing
+-- Line Drawingr
 function Raster2D.rasterizeSortedEdges(NSVGrasterizer *r, float tx, float ty, float scale, NSVGcachedPaint* cache, char fillRule)
 {
 	NSVGactiveEdge *active = NULL;
@@ -352,62 +352,78 @@ function Raster2D.rasterizeSortedEdges(NSVGrasterizer *r, float tx, float ty, fl
 				}
 			}
 
-			// resort the list if needed
-			for (;;) {
-				int changed = 0;
+			-- resort the list if needed
+			while (true) do
+				local changed = false;
 				step = &active;
-				while (*step && (*step)->next) {
-					if ((*step)->x > (*step)->next->x) {
+				while (*step && (*step)->next) do
+					if ((*step)->x > (*step)->next->x) then
 						NSVGactiveEdge* t = *step;
 						NSVGactiveEdge* q = t->next;
 						t->next = q->next;
 						q->next = t;
 						*step = q;
-						changed = 1;
-					}
+						changed = true;
+					end
 					step = &(*step)->next;
-				}
-				if (!changed) break;
-			}
+				end
+				
+				if changed then
+					break;
+				end
+			end
 
-			// insert all edges that start before the center of this scanline -- omit ones that also end on this scanline
-			while (e < r->nedges && r->edges[e].y0 <= scany) {
-				if (r->edges[e].y1 > scany) {
+			-- insert all edges that start before the center of this scanline -- omit ones that also end on this scanline
+			while (e < r->nedges && r->edges[e].y0 <= scany) do
+				if (r->edges[e].y1 > scany) then
 					NSVGactiveEdge* z = nsvg__addActive(r, &r->edges[e], scany);
-					if (z == NULL) break;
-					// find insertion point
-					if (active == NULL) {
+					if (z == NULL) then
+						break;
+					end
+
+					-- find insertion point
+					if (active == NULL) then
 						active = z;
-					} else if (z->x < active->x) {
-						// insert at front
+					elseif (z->x < active->x) then
+						-- insert at front
 						z->next = active;
 						active = z;
-					} else {
-						// find thing to insert AFTER
+					else
+						-- find thing to insert AFTER
 						NSVGactiveEdge* p = active;
-						while (p->next && p->next->x < z->x)
+						while (p->next && p->next->x < z->x) do
 							p = p->next;
-						// at this point, p->next->x is NOT < z->x
+						end
+
+						-- at this point, p->next->x is NOT < z->x
 						z->next = p->next;
 						p->next = z;
-					}
-				}
+					end
+				end
 				e++;
-			}
+			end
 
-			// now process all active edges in non-zero fashion
-			if (active != NULL)
+			-- now process all active edges in non-zero fashion
+			if (active != NULL) then
 				nsvg__fillActiveEdges(r->scanline, r->width, active, maxWeight, &xmin, &xmax, fillRule);
-		}
-		// Blit
-		if (xmin < 0) xmin = 0;
-		if (xmax > r->width-1) xmax = r->width-1;
-		if (xmin <= xmax) {
-			nsvg__scanlineSolid(&r->bitmap[y * r->stride] + xmin*4, xmax-xmin+1, &r->scanline[xmin], xmin, y, tx,ty, scale, cache);
-		}
-	}
+			end
+		end
 
-}
+		-- Blit
+		if (xmin < 0) then
+			xmin = 0;
+		end
+		
+		if (xmax > r->width-1) then
+			xmax = r->width-1;
+		end
+
+		if (xmin <= xmax) then
+			nsvg__scanlineSolid(&r->bitmap[y * r->stride] + xmin*4, xmax-xmin+1, &r->scanline[xmin], xmin, y, tx,ty, scale, cache);
+		end
+	end
+
+end
 
 
 -- Arbitrary line using Bresenham
