@@ -6,6 +6,7 @@ local bit = require("bit")
 local rshift, lshift, bor, band = bit.rshift, bit.lshift, bit.bor, bit.band
 
 local abs = math.abs;
+local atan2 = math.atan2;
 local floor = math.floor;
 local PI = math.pi;
 
@@ -16,7 +17,7 @@ local round = maths.round;
 local pointsEquals = maths.pointsEquals;
 
 local SVGTypes = require("ljgraph2D.SVGTypes")
-
+local int = ffi.typeof("int")
 
 local Path2D = {
 	SVGpointFlags = {
@@ -37,6 +38,9 @@ local Path2D_mt = {
 
 function Path2D.init(self, ...)
 	local obj = {
+		tessTol = 0.25;
+		distTol = 0.01;
+
 		points = {};
 	}
 	setmetatable(obj, Path2D_mt);
@@ -263,5 +267,238 @@ function Path2D.roundCap(self, left, right, p, dx, dy, lineWidth, ncap, connect)
 	right.y = ry;
 end
 
+--[[
+	Line Joins
+--]]
+function Path2D.bevelJoin(self, left, right, p0, p1, lineWidth)
+
+	local w = lineWidth * 0.5;
+	local dlx0 = p0.dy;
+	local dly0 = -p0.dx;
+	local dlx1 = p1.dy;
+	local dly1 = -p1.dx;
+	local lx0 = p1.x - (dlx0 * w);
+	local ly0 = p1.y - (dly0 * w);
+	local rx0 = p1.x + (dlx0 * w);
+	local ry0 = p1.y + (dly0 * w);
+	local lx1 = p1.x - (dlx1 * w);
+	local ly1 = p1.y - (dly1 * w);
+	local rx1 = p1.x + (dlx1 * w);
+	local ry1 = p1.y + (dly1 * w);
+
+	self:addEdge(lx0, ly0, left.x, left.y);
+	self:addEdge(lx1, ly1, lx0, ly0);
+
+	self:addEdge(right.x, right.y, rx0, ry0);
+	self:addEdge(rx0, ry0, rx1, ry1);
+
+	left.x = lx1; 
+	left.y = ly1;
+	right.x = rx1; 
+	right.y = ry1;
+end
+
+function Path2D.miterJoin(self, left, right, p0, p1, lineWidth)
+
+	local w = lineWidth * 0.5;
+	local dlx0 = p0.dy;
+	local dly0 = -p0.dx;
+	local dlx1 = p1.dy;
+	local dly1 = -p1.dx;
+	local lx0, rx0, lx1, rx1 = 0,0,0,0;
+	local ly0, ry0, ly1, ry1 = 0,0,0,0;
+
+	if band(p1.flags, Path2D.SVGpointFlags.NSVG_PT_LEFT) ~= 0 then
+		lx0 = p1.x - p1.dmx * w;
+		lx1 = lx0;
+		ly0 = p1.y - p1.dmy * w;
+		ly1 = ly0;
+		self:addEdge(lx1, ly1, left.x, left.y);
+
+		rx0 = p1.x + (dlx0 * w);
+		ry0 = p1.y + (dly0 * w);
+		rx1 = p1.x + (dlx1 * w);
+		ry1 = p1.y + (dly1 * w);
+		self:addEdge(right.x, right.y, rx0, ry0);
+		self:addEdge(rx0, ry0, rx1, ry1);
+	else
+		lx0 = p1.x - (dlx0 * w);
+		ly0 = p1.y - (dly0 * w);
+		lx1 = p1.x - (dlx1 * w);
+		ly1 = p1.y - (dly1 * w);
+		self:addEdge(lx0, ly0, left.x, left.y);
+		self:addEdge(lx1, ly1, lx0, ly0);
+
+		rx0 = p1.x + p1.dmx * w;
+		rx1 = rx0;
+
+		ry0 = p1.y + p1.dmy * w;
+		ry1 = ry0;
+		self:addEdge(right.x, right.y, rx1, ry1);
+	end
+
+	left.x = lx1; 
+	left.y = ly1;
+	right.x = rx1; 
+	right.y = ry1;
+end
+
+
+function  Path2D.roundJoin(self, left, right, p0, p1, lineWidth, ncap)
+
+	local w = lineWidth * 0.5;
+	local dlx0 = p0.dy;
+	local dly0 = -p0.dx;
+	local dlx1 = p1.dy;
+	local dly1 = -p1.dx;
+	local a0 = atan2(dly0, dlx0);
+	local a1 = atan2(dly1, dlx1);
+	local da = a1 - a0;
+	local lx, ly, rx, ry = 0,0,0,0;
+
+	if (da < PI) then
+		da = da + PI*2;
+	end
+
+	if (da > PI) then
+		da = da - PI*2;
+	end
+
+	local n = ceil((abs(da) / PI) * ncap);
+	if n < 2 then
+		n = 2;
+	end
+
+	if n > ncap then
+		n = ncap;
+	end
+
+
+	lx = left.x;
+	ly = left.y;
+	rx = right.x;
+	ry = right.y;
+
+	for i = 0, n-1 do
+		local u = i/(n-1);
+		local a = a0 + u*da;
+		local ax = cos(a) * w;
+		local ay = sin(a) * w;
+		local lx1 = p1.x - ax;
+		local ly1 = p1.y - ay;
+		local rx1 = p1.x + ax;
+		local ry1 = p1.y + ay;
+
+		self:addEdge(lx1, ly1, lx, ly);
+		self:addEdge(rx, ry, rx1, ry1);
+
+		lx = lx1; 
+		ly = ly1;
+		rx = rx1; 
+		ry = ry1;
+	end
+
+	left.x = lx; left.y = ly;
+	right.x = rx; right.y = ry;
+end
+
+
+function Path2D.straightJoin(self, left, right, p1, lineWidth)
+
+	local w = lineWidth * 0.5;
+	local lx = p1.x - (p1.dmx * w);
+	local ly = p1.y - (p1.dmy * w);
+	local rx = p1.x + (p1.dmx * w);
+	local ry = p1.y + (p1.dmy * w);
+
+	self:addEdge(lx, ly, left.x, left.y);
+	self:addEdge(right.x, right.y, rx, ry);
+
+	left.x = lx; 
+	left.y = ly;
+	right.x = rx; 
+	right.y = ry;
+end
+
+
+
+--[[
+	Ancillary
+--]]
+
+function Path2D.expandStroke(self, NSVGpoint* points, npoints, closed, lineJoin, lineCap, lineWidth)
+
+	local ncap = maths.curveDivs(lineWidth*0.5, PI, self.tessTol);	-- Calculate divisions per half circle.
+	NSVGpoint left = {0,0,0,0,0,0,0,0}, 
+	right = {0,0,0,0,0,0,0,0}, 
+	firstLeft = {0,0,0,0,0,0,0,0}, 
+	firstRight = {0,0,0,0,0,0,0,0};
+	NSVGpoint* p0, *p1;
+	int j, s, e;
+
+	-- Build stroke edges
+	if closed then
+		-- Looping
+		p0 = &points[npoints-1];
+		p1 = &points[0];
+		s = 0;
+		e = npoints;
+	else 
+		-- Add cap
+		p0 = &points[0];
+		p1 = &points[1];
+		s = 1;
+		e = npoints-1;
+	end
+
+	if closed then
+		initClosed(left, right, p0, p1, lineWidth);
+		firstLeft = left;
+		firstRight = right;
+	else
+		-- Add cap
+		local dx = p1->x - p0->x;
+		local dy = p1->y - p0->y;
+		local _, dx, dy = maths.normalize(dx, dy);
+		
+		if (lineCap == NSVG_CAP_BUTT)
+			nsvg__buttCap(r, &left, &right, p0, dx, dy, lineWidth, 0);
+		else if (lineCap == NSVG_CAP_SQUARE)
+			nsvg__squareCap(r, &left, &right, p0, dx, dy, lineWidth, 0);
+		else if (lineCap == NSVG_CAP_ROUND)
+			nsvg__roundCap(r, &left, &right, p0, dx, dy, lineWidth, ncap, 0);
+	}
+
+	for (j = s; j < e; ++j) {
+		if (p1->flags & NSVG_PT_CORNER) {
+			if (lineJoin == NSVG_JOIN_ROUND)
+				nsvg__roundJoin(r, &left, &right, p0, p1, lineWidth, ncap);
+			else if (lineJoin == NSVG_JOIN_BEVEL || (p1->flags & NSVG_PT_BEVEL))
+				nsvg__bevelJoin(r, &left, &right, p0, p1, lineWidth);
+			else
+				nsvg__miterJoin(r, &left, &right, p0, p1, lineWidth);
+		} else {
+			nsvg__straightJoin(r, &left, &right, p1, lineWidth);
+		}
+		p0 = p1++;
+	}
+
+	if (closed) {
+		// Loop it
+		nsvg__addEdge(r, firstLeft.x, firstLeft.y, left.x, left.y);
+		nsvg__addEdge(r, right.x, right.y, firstRight.x, firstRight.y);
+	} else {
+		// Add cap
+		float dx = p1->x - p0->x;
+		float dy = p1->y - p0->y;
+		nsvg__normalize(&dx, &dy);
+		if (lineCap == NSVG_CAP_BUTT)
+			nsvg__buttCap(r, &right, &left, p1, -dx, -dy, lineWidth, 1);
+		else if (lineCap == NSVG_CAP_SQUARE)
+			nsvg__squareCap(r, &right, &left, p1, -dx, -dy, lineWidth, 1);
+		else if (lineCap == NSVG_CAP_ROUND)
+			nsvg__roundCap(r, &right, &left, p1, -dx, -dy, lineWidth, ncap, 1);
+	}
+}
 
 return Path2D

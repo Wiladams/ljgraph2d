@@ -1,8 +1,20 @@
 
-local sqrt = math.sqrt
-local floor = math.floor
-local ceil = math.ceil
+local acos = math.acos;
+local sqrt = math.sqrt;
+local floor = math.floor;
+local ceil = math.ceil;
 
+
+
+local function curveDivs(r, arc, tol)
+	local da = acos(r / (r + tol)) * 2.0;
+	local divs = ceil(arc / da);
+	if (divs < 2) then
+		divs = 2;
+	end
+
+	return divs;
+end
 
 -- determine where a point (p3) intersects the
 -- line determined by points p1 and p2
@@ -78,6 +90,7 @@ end
 
 return {
 	CLAMP = clamp;
+	curveDivs = curveDivs;
 
 	lineMag = lineMag;
 
