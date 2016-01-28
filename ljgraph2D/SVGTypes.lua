@@ -48,14 +48,15 @@ typedef struct SVGGradient {
 ]]
 
 ffi.cdef[[
-typedef struct SVGpaint {
+typedef struct SVGPaint {
 	char type;
 	union {
-		unsigned int color;
+		uint32_t color;
 		struct SVGGradient* gradient;
 	};
 } SVGPaint_t;
 ]]
+local SVGPaint = ffi.typeof("struct SVGPaint");
 
 ffi.cdef[[
 typedef struct SVGCachedPaint {

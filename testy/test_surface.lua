@@ -6,19 +6,20 @@ local ffi = require("ffi")
 local Surface = require("ljgraph2D.Surface")
 local colors = require("ljgraph2D.colors")
 local SVGTypes = require("ljgraph2D.SVGTypes")
-local bmp = require("bmpcodec")
-local FileStream = require("filestream")
 local transform2D = require("ljgraph2D.transform2D")
 local utils = require("utils")
 
 
 
 local function solidColor(value)
-	local color = SVGTypes.SVGCachedPaint();
-	color.type = SVGTypes.PaintType.COLOR;
-	color.colors[0] = value;
+	local cache = SVGTypes.SVGCachedPaint();
+	local paint = SVGTypes.SVGPaint();
+	paint.type = SVGTypes.PaintType.COLOR;
+	paint.color = value;
 
-	return color;
+	SVGTypes.initPaint(cache, paint, 1.0);
+
+	return cache;
 end
 
 local function colorLinearGradient(value1, value2)
@@ -33,6 +34,12 @@ end
 
 
 local surf = Surface(320, 240);
+
+local function drawBackground()
+	utils.drawCheckerboard (surf,8, colors.svg.lightgray, colors.svg.white)
+end
+
+
 local solidRed = solidColor(colors.RGBA(255,0,0));
 
 
@@ -48,15 +55,7 @@ local ty = 0;
 local scale = 1.0;
 local cache = solidRed;
 
-utils.drawCheckerboard (surf,8, colors.svg.lightgray, colors.svg.white)
 
---[[
-local function fillRect(x,y,w,h, value)
-	for lineNum = y, y+h-1 do
-		surf:hline(x, lineNum, w, value)
-	end
-end
---]]
 
 local function test_linearGradient()
 	utils.fillRect(surf, 50, 50, 100, 180, colors.red);
@@ -83,12 +82,10 @@ local function test_linearGradient()
 	end
 end
 
+
+
 --surf:scanlineSolid(dst, count, cover, x, 100, tx, ty, scale, cache)
---surf:hline(10, 20, 200, colors.green);
+drawBackground();
+test_linearGradient();
 
-test_linearGradient()
-
--- Write the surface to a .bmp file
-local fs = FileStream.open("test_surface.bmp")
-bmp.write(fs, surf)
-fs:close();
+utils.save("test_surface.bmp");
