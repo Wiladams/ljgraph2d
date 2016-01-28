@@ -12,6 +12,11 @@ local lerpRGBA = colors.lerpRGBA;
 
 local export = {}
 
+local FillRule = {
+	NONZERO = 0,
+	EVENODD = 1,
+};
+
 local LineJoin = {
 		MITER = 0,
 		ROUND = 1,
@@ -46,6 +51,17 @@ typedef struct SVGedge {
 } SVGedge_t;
 ]]
 local SVGEdge = ffi.typeof("struct SVGedge");
+
+ffi.cdef[[
+typedef struct SVGActiveEdge {
+	int x,dx;
+	float ey;
+	int dir;
+	struct SVGActiveEdge *next;
+} SVGActiveEdge_t;
+]]
+local SVGActiveEdge = ffi.typeof("struct SVGActiveEdge");
+
 
 ffi.cdef[[
 typedef struct SVGpoint {
@@ -257,12 +273,14 @@ end
 
 
 -- Enums
+export.FillRule = FillRule;
 export.LineJoin = LineJoin;
 export.LineCap = LineCap;
 export.PointFlags = PointFlags;
 export.PaintType = PaintType;
 
 -- Types
+export.SVGActiveEdge = SVGActiveEdge;
 export.SVGCachedPaint = SVGCachedPaint;
 export.SVGEdge = SVGEdge;
 export.SVGGradient = SVGGradient;

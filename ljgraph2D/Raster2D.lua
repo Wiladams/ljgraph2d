@@ -34,10 +34,11 @@ local SVG__FIXMASK		= (SVG__FIX-1);
 local SVG__MEMPAGE_SIZE	= 1024;
 
 
-local function fillScanline(unsigned char* scanline, int len, int x0, int x1, int maxWeight, int* xmin, int* xmax)
+local function fillScanline(scanline, len, x0, x1, maxWeight, xmin, xmax)
 
-	local i = rshift(x0, NSVG__FIXSHIFT);
-	local j = rshift(x1, NSVG__FIXSHIFT);
+	local i = rshift(x0, SVG__FIXSHIFT);
+	local j = rshift(x1, SVG__FIXSHIFT);
+	
 	if (i < xmin) then
 		xmin = i;
 	end
@@ -47,36 +48,76 @@ local function fillScanline(unsigned char* scanline, int len, int x0, int x1, in
 	end
 
 	if (i < len and j >= 0) then
-		if (i == j) then
+		if i == j then
 			-- x0,x1 are the same pixel, so compute combined coverage
 			scanline[i] = scanline[i] + rshift((x1 - x0) * maxWeight, SVG__FIXSHIFT);
 		else
-			if (i >= 0) -- add antialiasing for x0
-				scanline[i] = scanline[i] + rshift(((NSVG__FIX - band(x0, NSVG__FIXMASK)) * maxWeight), SVG__FIXSHIFT);
+			if i >= 0 then-- add antialiasing for x0
+				scanline[i] = scanline[i] + rshift(((SVG__FIX - band(x0, SVG__FIXMASK)) * maxWeight), SVG__FIXSHIFT);
 			else
 				i = -1; -- clip
 			end
 
 			if (j < len) then -- add antialiasing for x1
-				scanline[j] = scanline[j] + (((x1 & NSVG__FIXMASK) * maxWeight) >> NSVG__FIXSHIFT);
+				scanline[j] = scanline[j] + rshift((band(x1, SVG__FIXMASK) * maxWeight), SVG__FIXSHIFT);
 			else
 				j = len; -- clip
 			end
 
-			for (++i; i < j; ++i) -- fill pixels between x0 and x1
-				scanline[i] += (unsigned char)maxWeight;
+			--for (++i; i < j; ++i) do -- fill pixels between x0 and x1
+			i = i + 1;
+			while (i < j) do
+				scanline[i] = scanline[i] + maxWeight;
+				i = i + 1;
+			end
+		end
+	end
+
+	return xmin, xmax;
+end
+
+-- note: this routine clips fills that extend off the edges... ideally this
+-- wouldn't happen, but it could happen if the truetype glyph bounding boxes
+-- are wrong, or if the user supplies a too-small bitmap
+local function fillActiveEdges(scanline, len, edges, maxWeight, xmin, xmax, fillRule)
+	-- non-zero winding fill
+	local x0, w  = 0, 0;
+
+	if fillRule == SVGTypes.FillRule.NONZERO then
+		-- Non-zero
+		for _, e in ipairs(edges) do
+			if w == 0 then
+				-- if we're currently at zero, we need to record the edge start point
+				x0 = e.x; 
+				w = w + e.dir;
+			else
+				local x1 = e.x; 
+				w = w + e.dir;
+
+				-- if we went to zero, we need to draw
+				if w == 0 then
+					xmin, xmax = fillScanline(scanline, len, x0, x1, maxWeight, xmin, xmax);
+				end
+			end
+		end
+	elseif (fillRule == NSVG_FILLRULE_EVENODD) then
+		-- Even-odd
+		--while (e ~= NULL) do
+		for _, e in ipairs(edges) do
+			if (w == 0) then
+				-- if we're currently at zero, we need to record the edge start point
+				x0 = e.x; 
+				w = 1;
+			else
+				local x1 = e.x; 
+				w = 0;
+				fillScanline(scanline, len, x0, x1, maxWeight, xmin, xmax);
+			end
 		end
 	end
 end
 
 
---[[
-	DrawingContext
-
-	Represents the API for doing drawing.  This is a retained interface,
-	so it will maintain a current drawing color and various other 
-	attributes.
---]]
 local Raster2D = {}
 setmetatable(Raster2D, {
 	__call = function(self, ...)
@@ -99,23 +140,21 @@ function Raster2D.init(self, width, height, data)
 		Context = DrawingContext(width, height);
 		width = width;
 		height = height;
-		--bitcount = bitcount;
-		--data = data;
 
 		rowsize = rowsize;
 		pixelarraysize = pixelarraysize;
 
 		SpanBuffer = ffi.new("int32_t[?]", width);
 
-		tessTol = 0.25;
-		distTol = 0.01;
+		--tessTol = 0.25;
+		--distTol = 0.01;
 
 		-- set of points defining current path
 		px = 0;		-- Current cursor location
 		py = 0;		
 
-		edges = {};
-		points = {};
+		--edges = {};
+		--points = {};
 
 	}
 	setmetatable(obj, DrawingContext_mt)
@@ -169,110 +208,8 @@ function Raster2D.fillText(self, x, y, text, font, value)
 end
 
 
--- Line Drawingr
-function Raster2D.rasterizeSortedEdges(NSVGrasterizer *r, float tx, float ty, float scale, NSVGcachedPaint* cache, char fillRule)
-{
-	NSVGactiveEdge *active = NULL;
-	int y, s;
-	int e = 0;
-	int maxWeight = (255 / NSVG__SUBSAMPLES);  // weight per vertical scanline
-	int xmin, xmax;
+-- Line Drawing
 
-	for (y = 0; y < r->height; y++) {
-		memset(r->scanline, 0, r->width);
-		xmin = r->width;
-		xmax = 0;
-		for (s = 0; s < NSVG__SUBSAMPLES; ++s) {
-			// find center of pixel for this scanline
-			float scany = y*NSVG__SUBSAMPLES + s + 0.5f;
-			NSVGactiveEdge **step = &active;
-
-			// update all active edges;
-			// remove all active edges that terminate before the center of this scanline
-			while (*step) {
-				NSVGactiveEdge *z = *step;
-				if (z->ey <= scany) {
-					*step = z->next; // delete from list
-//					NSVG__assert(z->valid);
-					nsvg__freeActive(r, z);
-				} else {
-					z->x += z->dx; // advance to position for current scanline
-					step = &((*step)->next); // advance through list
-				}
-			}
-
-			-- resort the list if needed
-			while (true) do
-				local changed = false;
-				step = &active;
-				while (*step && (*step)->next) do
-					if ((*step)->x > (*step)->next->x) then
-						NSVGactiveEdge* t = *step;
-						NSVGactiveEdge* q = t->next;
-						t->next = q->next;
-						q->next = t;
-						*step = q;
-						changed = true;
-					end
-					step = &(*step)->next;
-				end
-				
-				if changed then
-					break;
-				end
-			end
-
-			-- insert all edges that start before the center of this scanline -- omit ones that also end on this scanline
-			while (e < r->nedges && r->edges[e].y0 <= scany) do
-				if (r->edges[e].y1 > scany) then
-					NSVGactiveEdge* z = nsvg__addActive(r, &r->edges[e], scany);
-					if (z == NULL) then
-						break;
-					end
-
-					-- find insertion point
-					if (active == NULL) then
-						active = z;
-					elseif (z->x < active->x) then
-						-- insert at front
-						z->next = active;
-						active = z;
-					else
-						-- find thing to insert AFTER
-						NSVGactiveEdge* p = active;
-						while (p->next && p->next->x < z->x) do
-							p = p->next;
-						end
-
-						-- at this point, p->next->x is NOT < z->x
-						z->next = p->next;
-						p->next = z;
-					end
-				end
-				e++;
-			end
-
-			-- now process all active edges in non-zero fashion
-			if (active != NULL) then
-				nsvg__fillActiveEdges(r->scanline, r->width, active, maxWeight, &xmin, &xmax, fillRule);
-			end
-		end
-
-		-- Blit
-		if (xmin < 0) then
-			xmin = 0;
-		end
-		
-		if (xmax > r->width-1) then
-			xmax = r->width-1;
-		end
-
-		if (xmin <= xmax) then
-			nsvg__scanlineSolid(&r->bitmap[y * r->stride] + xmin*4, xmax-xmin+1, &r->scanline[xmin], xmin, y, tx,ty, scale, cache);
-		end
-	end
-
-end
 
 
 -- Arbitrary line using Bresenham

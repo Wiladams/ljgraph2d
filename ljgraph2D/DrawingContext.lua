@@ -5,7 +5,7 @@ local rshift = bit.rshift
 local abs = math.abs;
 local floor = math.floor;
 
-local maths = require("tflremote.maths")
+local maths = require("ljgraph2D.maths")
 local sgn = maths.sgn;
 local round = maths.round;
 
