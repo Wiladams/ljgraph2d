@@ -9,6 +9,9 @@ local SVGTypes = require("ljgraph2D.SVGTypes")
 local bmp = require("bmpcodec")
 local FileStream = require("filestream")
 local transform2D = require("ljgraph2D.transform2D")
+local utils = require("utils")
+
+
 
 local function solidColor(value)
 	local color = SVGTypes.SVGCachedPaint();
@@ -45,16 +48,18 @@ local ty = 0;
 local scale = 1.0;
 local cache = solidRed;
 
-surf:clearToWhite();
+utils.drawCheckerboard (surf,8, colors.svg.lightgray, colors.svg.white)
 
+--[[
 local function fillRect(x,y,w,h, value)
 	for lineNum = y, y+h-1 do
 		surf:hline(x, lineNum, w, value)
 	end
 end
+--]]
 
 local function test_linearGradient()
-	fillRect(50, 50, 100, 180, colors.red);
+	utils.fillRect(surf, 50, 50, 100, 180, colors.red);
 
 	local linearBlue = colorLinearGradient(colors.RGBA(0,0,255), colors.RGBA(0,0,127,255));
 	local color1 = colors.RGBA(0,0,255)
