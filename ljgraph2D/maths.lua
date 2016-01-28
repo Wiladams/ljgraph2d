@@ -1,3 +1,5 @@
+local bit = require("bit")
+local band, bor, lshift, rshift = bit.band, bit.bor, bit.lshift, bit.rshift
 
 local acos = math.acos;
 local sqrt = math.sqrt;
@@ -14,6 +16,11 @@ local function curveDivs(r, arc, tol)
 	end
 
 	return divs;
+end
+
+local function GetAlignedByteCount(width, bitsPerPixel, byteAlignment)
+    local nbytes = width * (bitsPerPixel/8);
+    return nbytes + (byteAlignment - (nbytes % byteAlignment)) % 4
 end
 
 -- determine where a point (p3) intersects the
@@ -87,10 +94,16 @@ local function sgn(x)
 	return 0
 end
 
+-- fairly efficient division by 255
+local function div255(x)
+    return rshift(((x+1) * 257), 16);
+end
 
 return {
 	clamp = clamp;
 	curveDivs = curveDivs;
+	div255 = div255;
+	GetAlignedByteCount = GetAlignedByteCount;
 
 	lineMag = lineMag;
 

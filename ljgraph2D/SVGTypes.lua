@@ -20,7 +20,26 @@ typedef struct SVGpoint {
 ]]
 local SVGPoint = ffi.typeof("struct SVGpoint");
 
+ffi.cdef[[
+typedef struct SVGCachedPaint {
+	char type;
+	char spread;
+	float xform[6];
+	uint32_t colors[256];
+} SVGCachedPaint_t;
+]]
+local SVGCachedPaint = ffi.typeof("struct SVGCachedPaint")
+
+
 return {
+	SVGCachedPaint = SVGCachedPaint;
 	SVGEdge = SVGEdge;
 	SVGPoint = SVGPoint;
+
+	PaintType = {
+		NONE = 0,
+		COLOR = 1,
+		LINEAR_GRADIENT = 2,
+		RADIAL_GRADIENT = 3,
+	};
 }

@@ -19,12 +19,19 @@
 --]]
 
 local ffi = require("ffi")
+local bit = require("bit")
+local band, bor, lshift, rshift = bit.band, bit.bor, bit.lshift, bit.rshift
+
+local maths = require("ljgraph2D.maths")
+local clamp = maths.clamp;
+local div255 = maths.div255;
+local GetAlignedByteCount = maths.GetAlignedByteCount;
+
+local SVGTypes = require("ljgraph2D.SVGTypes")
 
 
-local function GetAlignedByteCount(width, bitsPerPixel, byteAlignment)
-    local nbytes = width * (bitsPerPixel/8);
-    return nbytes + (byteAlignment - (nbytes % byteAlignment)) % 4
-end
+
+
 
 
 local Surface = {}
@@ -60,7 +67,11 @@ function Surface.init(self, width, height, data)
 end
 
 function Surface.new(self, width, height, data)
-	data = data or ffi.new("int32_t[?]", width*height)
+	if not width then
+		return nil;
+	end
+
+	data = data or ffi.new("uint8_t[?]", width*height*4)
 	return self:init(width, height, data)
 end
 
@@ -75,7 +86,7 @@ end
 function Surface.hline(self, x, y, length, value)
 	local offset = y*self.width+x;
 	while length > 0 do
-		self.data[offset] = value;
+		ffi.cast("uint32_t *", self.data)[offset] = value;
 		offset = offset + 1;
 		length = length-1;
 	end
@@ -86,14 +97,133 @@ function Surface.hspan(self, x, y, length, span)
 	ffi.copy(dst, span, length*ffi.sizeof("int32_t"))
 end
 
+-- set or get a value for a single pixel
 function Surface.pixel(self, x, y, value)
 	local offset = y*self.width+x;
 	if value then
-		self.data[offset] = value;
+		ffi.cast("uint32_t *",self.data)[offset] = value;
 		return self;
 	end
 
 	return self.data[offset]
+end
+
+
+function Surface.scanlineSolid(self, dst, count, cover, x, y, tx, ty, scale, cache)
+--print("typeof cover: ", ffi.typeof(cover))
+	if (cache.type == SVGTypes.PaintType.COLOR) then
+		local cb = band(cache.colors[0], 0xff);
+		local cg = band(rshift(cache.colors[0], 8), 0xff);
+		local cr = band(rshift(cache.colors[0], 16), 0xff);
+		local ca = band(rshift(cache.colors[0], 24), 0xff);
+
+--print("cb, cg, cr, ca: ", cb, cg, cr, ca)
+
+		for i = 0, count-1 do
+			local a = div255(cover[0] * ca);
+			local ia = 255 - a;
+--print("a,ia: ", a, ia)			
+			-- Premultiply
+			local r = div255(cr * a);
+			local g = div255(cg * a);
+			local b = div255(cb * a);
+--print("pre r,g,b: ", r, g, b)
+			-- Blend over
+			b = b + div255(ia * dst[0]);
+			g = g + div255(ia * dst[1]);
+			r = r + div255(ia * dst[2]);
+			a = a + div255(ia * dst[3]);
+--print("blend r,g,b: ", r, g, b, a)
+
+			dst[0] = b;
+			dst[1] = g;
+			dst[2] = r;
+			dst[3] = a;
+
+			cover = cover + 1;
+			dst = dst + 4;
+		end
+	elseif (cache.type == SVGTypes.PaintType.LINEAR_GRADIENT) then
+		local t = cache.xform;
+
+		local fx = (x - tx) / scale;
+		local fy = (y - ty) / scale;
+		local dx = 1.0 / scale;
+
+
+		for i = 0, count-1 do
+			local gy = fx*t[1] + fy*t[3] + t[5];
+--print("gy: ", gy, clamp(gy*255, 0, 255))
+			local c = cache.colors[clamp(gy*255, 0, 255)];
+			local cb = band(c, 0xff);
+			local cg = band(rshift(c, 8), 0xff);
+			local cr = band(rshift(c, 16), 0xff);
+			local ca = band(rshift(c, 24), 0xff);
+
+			local a = div255(cover[0] * ca);
+			local ia = 255 - a;
+
+			-- Premultiply
+			local r = div255(cr * a);
+			local g = div255(cg * a);
+			local b = div255(cb * a);
+
+			-- Blend over
+			b = b + div255(ia * dst[0]);
+			g = g + div255(ia * dst[1]);
+			r = r + div255(ia * dst[2]);
+			a = a + div255(ia * dst[3]);
+
+			dst[0] = b;
+			dst[1] = g;
+			dst[2] = r;
+			dst[3] = a;
+
+			cover = cover + 1;
+			dst = dst + 4;
+			fx = fx + dx;
+		end
+	elseif (cache.type == SVGTypes.PaintType.RADIAL_GRADIENT) then
+		local t = cache.xform;
+
+		local fx = (x - tx) / scale;
+		local fy = (y - ty) / scale;
+		local dx = 1.0 / scale;
+
+		for i = 0, count-1 do
+			local gx = fx*t[0] + fy*t[2] + t[4];
+			local gy = fx*t[1] + fy*t[3] + t[5];
+			local gd = sqrt(gx*gx + gy*gy);
+			local c = cache.colors[clamp(gd*255, 0, 255)];
+			local cb = band(c, 0xff);
+			local cg = band(rshift(c, 8), 0xff);
+			local cr = band(rshift(c, 16), 0xff);
+			local ca = band(rshift(c, 24), 0xff);
+
+			local a = div255(cover[0] * ca);
+			local ia = 255 - a;
+
+			-- Premultiply
+			local r = div255(cr * a);
+			local g = div255(cg * a);
+			local b = div255(cb * a);
+
+			-- Blend over
+			b = b + div255(ia * dst[0]);
+			g = g + div255(ia * dst[1]);
+			r = r + div255(ia * dst[2]);
+			a = a + div255(ia * dst[3]);
+
+			dst[0] = b;
+			dst[1] = g;
+			dst[2] = r;
+			dst[3] = a;
+
+			cover = cover + 1;
+			dst = dst + 4;
+			fx = fx + dx;
+		end
+	end
 end
 
 function Surface.vline(self, x, y, length, value)
