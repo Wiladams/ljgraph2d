@@ -147,65 +147,6 @@ static void nsvg__unpremultiplyAlpha(unsigned char* image, int w, int h, int str
 }
 
 
-static void nsvg__initPaint(NSVGcachedPaint* cache, NSVGpaint* paint, float opacity)
-{
-	int i, j;
-	NSVGgradient* grad;
-
-	cache->type = paint->type;
-
-	if (paint->type == NSVG_PAINT_COLOR) {
-		cache->colors[0] = nsvg__applyOpacity(paint->color, opacity);
-		return;
-	}
-
-	grad = paint->gradient;
-
-	cache->spread = grad->spread;
-	memcpy(cache->xform, grad->xform, sizeof(float)*6);
-
-	if (grad->nstops == 0) {
-		for (i = 0; i < 256; i++)
-			cache->colors[i] = 0;
-	} if (grad->nstops == 1) {
-		for (i = 0; i < 256; i++)
-			cache->colors[i] = nsvg__applyOpacity(grad->stops[i].color, opacity);
-	} else {
-		unsigned int ca, cb = 0;
-		float ua, ub, du, u;
-		int ia, ib, count;
-
-		ca = nsvg__applyOpacity(grad->stops[0].color, opacity);
-		ua = nsvg__clampf(grad->stops[0].offset, 0, 1);
-		ub = nsvg__clampf(grad->stops[grad->nstops-1].offset, ua, 1);
-		ia = (int)(ua * 255.0f);
-		ib = (int)(ub * 255.0f);
-		for (i = 0; i < ia; i++) {
-			cache->colors[i] = ca;
-		}
-
-		for (i = 0; i < grad->nstops-1; i++) {
-			ca = nsvg__applyOpacity(grad->stops[i].color, opacity);
-			cb = nsvg__applyOpacity(grad->stops[i+1].color, opacity);
-			ua = nsvg__clampf(grad->stops[i].offset, 0, 1);
-			ub = nsvg__clampf(grad->stops[i+1].offset, 0, 1);
-			ia = (int)(ua * 255.0f);
-			ib = (int)(ub * 255.0f);
-			count = ib - ia;
-			if (count <= 0) continue;
-			u = 0;
-			du = 1.0f / (float)count;
-			for (j = 0; j < count; j++) {
-				cache->colors[ia+j] = nsvg__lerpRGBA(ca,cb,u);
-				u += du;
-			}
-		}
-
-		for (i = ib; i < 256; i++)
-			cache->colors[i] = cb;
-	}
-
-}
 
 
 void nsvgRasterize(NSVGrasterizer* r,

@@ -11,6 +11,48 @@ local function RGBA(r, g, b, a)
 	return bor(lshift(a,24), lshift(r,16), lshift(g,8), b)
 end
 
+local function colorComponents(c)
+	local b = band(c, 0xff);
+	local g = band(rshift(c,8), 0xff);
+	local r = band(rshift(c,16), 0xff);
+	local a = band(rshift(c,24), 0xff);
+
+	return r, g, b, a
+end
+
+--[[
+c - unsigned int
+	a color value, including r,g,b,a components
+u - float
+	should be a value between 0.0 and 1.0
+--]]
+local function applyOpacity(c, u)
+
+	local iu = clamp(u, 0.0, 1.0) * 256.0;
+	local r, g, b, a = colors.colorComponents(c);
+	a = rshift(a*iu, 8);
+	
+	return colors.RGBA(r, g, b, a);
+end
+
+--[[
+	linear interpolation of value from color c0 to 
+	color c1
+--]]
+local function lerpRGBA(c0, c1, u)
+
+	local iu = clamp(u, 0.0, 1.0) * 256.0;
+	local c0r, c0g, c0b, c0a = colorComponents(c0);
+	local c1r, c1g, c1b, c1a = colorComponents(c1);
+
+	local r = rshift(c0r*(256-iu) + (c1r*iu), 8);
+	local g = rshift(c0g*(256-iu) + (c1g*iu), 8);
+	local b = rshift(c0b*(256-iu) + (c1b*iu), 8);
+	local a = rshift(c0a*(256-iu) + (c1a*iu), 8);
+	
+	return RGBA(r, g, b, a);
+end
+
 --[[
 local function SVG_RGB(r, g, b) 
 	return bor(lshift(b,16), lshift(g,8), r)
@@ -18,6 +60,9 @@ end
 --]]
 
 local exports = {
+	applyOpacity = applyOpacity;
+	colorComponents = colorComponents;
+	lerpRGBA = lerpRGBA;
 	RGBA = RGBA;
 
 	white = RGBA(255, 255, 255);

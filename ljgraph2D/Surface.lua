@@ -26,6 +26,8 @@ local maths = require("ljgraph2D.maths")
 local clamp = maths.clamp;
 local div255 = maths.div255;
 local GetAlignedByteCount = maths.GetAlignedByteCount;
+local colors = require("ljgraph2D.colors")
+local colorComponents = colors.colorComponents;
 
 local SVGTypes = require("ljgraph2D.SVGTypes")
 
@@ -112,28 +114,21 @@ end
 function Surface.scanlineSolid(self, dst, count, cover, x, y, tx, ty, scale, cache)
 --print("typeof cover: ", ffi.typeof(cover))
 	if (cache.type == SVGTypes.PaintType.COLOR) then
-		local cb = band(cache.colors[0], 0xff);
-		local cg = band(rshift(cache.colors[0], 8), 0xff);
-		local cr = band(rshift(cache.colors[0], 16), 0xff);
-		local ca = band(rshift(cache.colors[0], 24), 0xff);
+		local cr, cg, cb, ca = colorComponents(cahce.colors[0]);
 
---print("cb, cg, cr, ca: ", cb, cg, cr, ca)
 
 		for i = 0, count-1 do
 			local a = div255(cover[0] * ca);
 			local ia = 255 - a;
---print("a,ia: ", a, ia)			
 			-- Premultiply
 			local r = div255(cr * a);
 			local g = div255(cg * a);
 			local b = div255(cb * a);
---print("pre r,g,b: ", r, g, b)
 			-- Blend over
 			b = b + div255(ia * dst[0]);
 			g = g + div255(ia * dst[1]);
 			r = r + div255(ia * dst[2]);
 			a = a + div255(ia * dst[3]);
---print("blend r,g,b: ", r, g, b, a)
 
 			dst[0] = b;
 			dst[1] = g;
@@ -153,12 +148,9 @@ function Surface.scanlineSolid(self, dst, count, cover, x, y, tx, ty, scale, cac
 
 		for i = 0, count-1 do
 			local gy = fx*t[1] + fy*t[3] + t[5];
---print("gy: ", gy, clamp(gy*255, 0, 255))
 			local c = cache.colors[clamp(gy*255, 0, 255)];
-			local cb = band(c, 0xff);
-			local cg = band(rshift(c, 8), 0xff);
-			local cr = band(rshift(c, 16), 0xff);
-			local ca = band(rshift(c, 24), 0xff);
+		
+			local cr, cg, cb, ca = colorComponents(c);
 
 			local a = div255(cover[0] * ca);
 			local ia = 255 - a;
@@ -195,10 +187,7 @@ function Surface.scanlineSolid(self, dst, count, cover, x, y, tx, ty, scale, cac
 			local gy = fx*t[1] + fy*t[3] + t[5];
 			local gd = sqrt(gx*gx + gy*gy);
 			local c = cache.colors[clamp(gd*255, 0, 255)];
-			local cb = band(c, 0xff);
-			local cg = band(rshift(c, 8), 0xff);
-			local cr = band(rshift(c, 16), 0xff);
-			local ca = band(rshift(c, 24), 0xff);
+			local cr, cg, cb, ca = colorComponents(c);
 
 			local a = div255(cover[0] * ca);
 			local ia = 255 - a;

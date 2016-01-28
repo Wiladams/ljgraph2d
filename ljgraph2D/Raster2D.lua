@@ -69,25 +69,9 @@ local function fillScanline(unsigned char* scanline, int len, int x0, int x1, in
 	end
 end
 
-static unsigned int nsvg__lerpRGBA(unsigned int c0, unsigned int c1, float u)
-{
-	int iu = (int)(nsvg__clampf(u, 0.0f, 1.0f) * 256.0f);
-	int r = (((c0) & 0xff)*(256-iu) + (((c1) & 0xff)*iu)) >> 8;
-	int g = (((c0>>8) & 0xff)*(256-iu) + (((c1>>8) & 0xff)*iu)) >> 8;
-	int b = (((c0>>16) & 0xff)*(256-iu) + (((c1>>16) & 0xff)*iu)) >> 8;
-	int a = (((c0>>24) & 0xff)*(256-iu) + (((c1>>24) & 0xff)*iu)) >> 8;
-	return nsvg__RGBA((unsigned char)r, (unsigned char)g, (unsigned char)b, (unsigned char)a);
-}
 
-static unsigned int nsvg__applyOpacity(unsigned int c, float u)
-{
-	int iu = (int)(nsvg__clampf(u, 0.0f, 1.0f) * 256.0f);
-	int r = (c) & 0xff;
-	int g = (c>>8) & 0xff;
-	int b = (c>>16) & 0xff;
-	int a = (((c>>24) & 0xff)*iu) >> 8;
-	return nsvg__RGBA((unsigned char)r, (unsigned char)g, (unsigned char)b, (unsigned char)a);
-}
+
+
 
 
 
