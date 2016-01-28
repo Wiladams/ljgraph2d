@@ -148,12 +148,31 @@ return {
 	SVGEdge = SVGEdge;
 	SVGPoint = SVGPoint;
 
+	LineJoin = {
+		MITER = 0,
+		ROUND = 1,
+		BEVEL = 2,
+	};
+	
+	LineCap = {
+		BUTT = 0,
+		ROUND = 1,
+		SQUARE = 2,
+	};
+
 	PaintType = {
 		NONE = 0,
 		COLOR = 1,
 		LINEAR_GRADIENT = 2,
 		RADIAL_GRADIENT = 3,
 	};
+
+	PointFlags = {
+		CORNER = 0x01,
+		BEVEL = 0x02,
+		LEFT = 0x04,
+	};
+	
 
 	-- functions
 	initPaint = initPaint;

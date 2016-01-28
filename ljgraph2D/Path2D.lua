@@ -17,6 +17,11 @@ local round = maths.round;
 local pointEquals = maths.pointEquals;
 
 local SVGTypes = require("ljgraph2D.SVGTypes")
+local PointFlags = SVGTypes.PointFlags;
+local LineJoin = SVGTypes.LineJoin;
+local LineCap = SVGTypes.LineCap;
+
+
 local int = ffi.typeof("int")
 
 
@@ -37,25 +42,7 @@ local function cmpEdge(a, b)
 end
 
 
-local Path2D = {
-	PointFlags = {
-		CORNER = 0x01,
-		BEVEL = 0x02,
-		LEFT = 0x04,
-	};
-	
-	LineJoin = {
-		MITER = 0,
-		ROUND = 1,
-		BEVEL = 2,
-	};
-	
-	LineCap = {
-		BUTT = 0,
-		ROUND = 1,
-		SQUARE = 2,
-	};
-}
+local Path2D = {}
 setmetatable(Path2D, {
 	__call = function(self, ...)
 		return self:new(...);
@@ -337,7 +324,7 @@ function Path2D.miterJoin(self, left, right, p0, p1, lineWidth)
 	local lx0, rx0, lx1, rx1 = 0,0,0,0;
 	local ly0, ry0, ly1, ry1 = 0,0,0,0;
 
-	if band(p1.flags, Path2D.PointFlags.LEFT) ~= 0 then
+	if band(p1.flags, PointFlags.LEFT) ~= 0 then
 		lx0 = p1.x - p1.dmx * w;
 		lx1 = lx0;
 		ly0 = p1.y - p1.dmy * w;
@@ -501,10 +488,10 @@ function Path2D.expandStroke(self, points, npoints, closed, lineJoin, lineCap, l
 	end
 
 	for j = s, e-1 do
-		if band(p1.flags, Path2D.PointFlags.CORNER)~=0 then
-			if lineJoin == Path2D.LineJoin.ROUND then
+		if band(p1.flags, PointFlags.CORNER)~=0 then
+			if lineJoin == LineJoin.ROUND then
 				self:roundJoin(left, right, p0, p1, lineWidth, ncap);
-			elseif (lineJoin == Path2D.LineJoin.BEVEL) or (band(p1.flags, Path2D.PointFlags.BEVEL)~=0) then
+			elseif (lineJoin == LineJoin.BEVEL) or (band(p1.flags, PointFlags.BEVEL)~=0) then
 				self:bevelJoin(left, right, p0, p1, lineWidth);
 			else
 				self:miterJoin(left, right, p0, p1, lineWidth);
@@ -525,11 +512,11 @@ function Path2D.expandStroke(self, points, npoints, closed, lineJoin, lineCap, l
 		local dy = p1.y - p0.y;
 		_, dx, dy = normalize(dx, dy);
 
-		if (lineCap == Path2D.LineCap.BUTT) then
+		if (lineCap == LineCap.BUTT) then
 			self:buttCap(right, left, p1, -dx, -dy, lineWidth, 1);
-		elseif (lineCap == Path2D.LineCap.SQUARE) then
+		elseif (lineCap == LineCap.SQUARE) then
 			self:squareCap(right, left, p1, -dx, -dy, lineWidth, 1);
-		elseif (lineCap == Path2D.LineCap.ROUND) then
+		elseif (lineCap == LineCap.ROUND) then
 			self:roundCap(right, left, p1, -dx, -dy, lineWidth, ncap, 1);
 		end
 	end
@@ -583,8 +570,8 @@ function Path2D.prepareStroke(miterLimit, lineJoin)
 		end
 
 		-- Clear flags, but keep the corner.
-		if band(p1.flags, Path2D.PointFlags.CORNER) ~= 0 then
-			p1.flags = Path2D.PointFlags.CORNER
+		if band(p1.flags, PointFlags.CORNER) ~= 0 then
+			p1.flags = PointFlags.CORNER
 		else
 			p1.flags = 0;
 		end
@@ -592,13 +579,13 @@ function Path2D.prepareStroke(miterLimit, lineJoin)
 		-- Keep track of left turns.
 		local cross = p1.dx * p0.dy - p0.dx * p1.dy;
 		if cross > 0.0 then
-			p1.flags = bor(p1.flags,Path2D.PointFlags.LEFT);
+			p1.flags = bor(p1.flags,PointFlags.LEFT);
 		end
 
 		-- Check to see if the corner needs to be beveled.
-		if band(p1.flags, Path2D.PointFlags.CORNER)~= 0 then
-			if ((dmr2 * miterLimit*miterLimit) < 1.0 or lineJoin == Path2D.LineJoin.BEVEL or lineJoin == Path2D.LineJoin.ROUND) then
-				p1.flags = bor(p1.flags,Path2D.PointFlags.BEVEL);
+		if band(p1.flags, PointFlags.CORNER)~= 0 then
+			if ((dmr2 * miterLimit*miterLimit) < 1.0 or lineJoin == LineJoin.BEVEL or lineJoin == LineJoin.ROUND) then
+				p1.flags = bor(p1.flags,PointFlags.BEVEL);
 			end
 		end
 

@@ -70,13 +70,6 @@ local function fillScanline(unsigned char* scanline, int len, int x0, int x1, in
 end
 
 
-
-
-
-
-
-
-
 --[[
 	DrawingContext
 

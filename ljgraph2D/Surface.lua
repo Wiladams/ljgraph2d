@@ -110,7 +110,8 @@ function Surface.pixel(self, x, y, value)
 	return self.data[offset]
 end
 
-
+-- perform a SRCOVER, honoring the color, whether it's 
+-- solid, or a linear gradient, or radial gradient
 function Surface.scanlineSolid(self, dst, count, cover, x, y, tx, ty, scale, cache)
 --print("typeof cover: ", ffi.typeof(cover))
 	if (cache.type == SVGTypes.PaintType.COLOR) then
