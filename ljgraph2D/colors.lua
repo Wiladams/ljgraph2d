@@ -1,5 +1,7 @@
 local bit = require("bit")
 local band, bor, lshift, rshift = bit.band, bit.bor, bit.lshift, bit.rshift
+local maths = require("ljgraph2D.maths");
+local clamp = maths.clamp
 
 -- The actual layout in memory is:
 -- Little Endian - BGRA
@@ -29,10 +31,10 @@ u - float
 local function applyOpacity(c, u)
 
 	local iu = clamp(u, 0.0, 1.0) * 256.0;
-	local r, g, b, a = colors.colorComponents(c);
+	local r, g, b, a = colorComponents(c);
 	a = rshift(a*iu, 8);
 	
-	return colors.RGBA(r, g, b, a);
+	return RGBA(r, g, b, a);
 end
 
 --[[

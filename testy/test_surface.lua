@@ -23,13 +23,24 @@ local function solidColor(value)
 end
 
 local function colorLinearGradient(value1, value2)
-	local color = SVGTypes.SVGCachedPaint();
-	color.type = SVGTypes.PaintType.LINEAR_GRADIENT;
-	color.colors[0] = value1;
-	color.colors[1] = value2;
-	transform2D.xformIdentity(color.xform);
+	local cache = SVGTypes.SVGCachedPaint();
+	cache.type = SVGTypes.PaintType.LINEAR_GRADIENT;
+	transform2D.xformIdentity(cache.xform);
 
-	return color;
+	--local paint = SVGTypes.SVGPaint();
+	--paint.type = SVGTypes.PaintType.LINEAR_GRADIENT;
+
+
+	-- setup the linear gradient directly
+	--SVGTypes.initPaint(cache, paint, 1.0);
+
+	for i=0,255 do
+		local u = RANGEMAP(i, 0, 255, 0, 1.0)
+		local c = colors.lerpRGBA(value1, value2, u)
+		cache.colors[i] = c;
+	end
+
+	return cache;
 end
 
 
@@ -60,19 +71,12 @@ local cache = solidRed;
 local function test_linearGradient()
 	utils.fillRect(surf, 50, 50, 100, 180, colors.red);
 
-	local linearBlue = colorLinearGradient(colors.RGBA(0,0,255), colors.RGBA(0,0,127,255));
-	local color1 = colors.RGBA(0,0,255)
-	local color2 = colors.RGBA(0,0,127)
-	
-	-- setup the color stops
-	for i=0,255 do
-		local r = 0;	-- RANGEMAP(i, 0, 255, 0, 125);
-		local g = RANGEMAP(i, 0, 255, 0, 255);
-		local b = RANGEMAP(i, 0, 255, 255, 0);
-		local a = RANGEMAP(i, 0, 255, 255, 64)
-		linearBlue.colors[i] = colors.RGBA(r,g,b, a);
-	end
+	local color1 = colors.RGBA(0,0,255, 255)
+	local color2 = colors.RGBA(125,255,0, 64)
+	--local color2 = colors.RGBA(186, 85, 211, 64);	-- mediumorchid
 
+	local linearBlue = colorLinearGradient(color1, color2);
+	
 	tx = 80
 	ty = 50
 	scale = 255
@@ -82,10 +86,7 @@ local function test_linearGradient()
 	end
 end
 
-
-
---surf:scanlineSolid(dst, count, cover, x, 100, tx, ty, scale, cache)
 drawBackground();
 test_linearGradient();
 
-utils.save("test_surface.bmp");
+utils.save(surf, "test_surface.bmp");

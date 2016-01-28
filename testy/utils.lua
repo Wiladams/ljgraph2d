@@ -38,9 +38,9 @@ local function drawCheckerboard (surf,check_size, color1, color2)
     end
 end
 
-local function save(filename)
+local function save(surf, filename)
 	-- Write the surface to a .bmp file
-	local fs = FileStream.open("test_surface.bmp")
+	local fs = FileStream.open(filename)
 	bmp.write(fs, surf)
 	fs:close();
 end

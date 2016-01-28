@@ -9,6 +9,33 @@ local applyOpacity = colors.applyOpacity;
 local lerpRGBA = colors.lerpRGBA;
 
 
+local export = {}
+
+local LineJoin = {
+		MITER = 0,
+		ROUND = 1,
+		BEVEL = 2,
+	};
+	
+local LineCap = {
+		BUTT = 0,
+		ROUND = 1,
+		SQUARE = 2,
+	};
+
+local PaintType = {
+		NONE = 0,
+		COLOR = 1,
+		LINEAR_GRADIENT = 2,
+		RADIAL_GRADIENT = 3,
+	};
+
+local PointFlags = {
+		CORNER = 0x01,
+		BEVEL = 0x02,
+		LEFT = 0x04,
+	};
+	
 
 ffi.cdef[[
 typedef struct SVGedge {
@@ -83,7 +110,7 @@ local function  initPaint(cache, paint, opacity)
 
 	-- Setup a solid color paint by simply applying
 	-- the opacity value and returning it
-	if (paint.type == SVGTypes.PaintType.COLOR) then
+	if (paint.type == PaintType.COLOR) then
 		cache.colors[0] = applyOpacity(paint.color, opacity);
 		return cache;
 	end
@@ -144,37 +171,20 @@ local function  initPaint(cache, paint, opacity)
 end
 
 
-return {
-	SVGCachedPaint = SVGCachedPaint;
-	SVGEdge = SVGEdge;
-	SVGPoint = SVGPoint;
 
-	LineJoin = {
-		MITER = 0,
-		ROUND = 1,
-		BEVEL = 2,
-	};
-	
-	LineCap = {
-		BUTT = 0,
-		ROUND = 1,
-		SQUARE = 2,
-	};
+export.LineJoin = LineJoin;
+export.LineCap = LineCap;
+export.PointFlags = PointFlags;
+export.PaintType = PaintType;
 
-	PaintType = {
-		NONE = 0,
-		COLOR = 1,
-		LINEAR_GRADIENT = 2,
-		RADIAL_GRADIENT = 3,
-	};
+export.SVGCachedPaint = SVGCachedPaint;
+export.SVGEdge = SVGEdge;
+export.SVGPaint = SVGPaint;
+export.SVGPoint = SVGPoint;
 
-	PointFlags = {
-		CORNER = 0x01,
-		BEVEL = 0x02,
-		LEFT = 0x04,
-	};
-	
 
 	-- functions
-	initPaint = initPaint;
-}
+export.initPaint = initPaint;
+
+
+return export
