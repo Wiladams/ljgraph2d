@@ -4,6 +4,7 @@ local band, bor, lshift, rshift = bit.band, bit.bor, bit.lshift, bit.rshift
 
 local maths = require("ljgraph2D.maths")
 local clamp = maths.clamp
+local transform2D = require("ljgraph2D.transform2D")
 local colors = require("ljgraph2D.colors")
 local applyOpacity = colors.applyOpacity;
 local lerpRGBA = colors.lerpRGBA;
@@ -60,20 +61,49 @@ local SVGPoint = ffi.typeof("struct SVGpoint");
 ffi.cdef[[
 typedef struct SVGGradientStop {
 	uint32_t color;
-	float offset;
+	double offset;	// 0.0 - 1.0
 } SVGGradientStop_t;
 ]]
+local SVGGradientStop = ffi.typeof("struct SVGGradientStop");
 
-ffi.cdef[[
-typedef struct SVGGradient {
-	float xform[6];
-	char spread;
-	float fx, fy;
-	int nstops;
-	struct SVGGradientStop stops[1];
-} SVGGradient_t;
-]]
 
+
+local SVGGradient = {}
+setmetatable(SVGGradient, {
+	__call = function(self, ...)
+		return self:new(...);
+	end,
+})
+
+local SVGGradient_mt = {
+	__index = SVGGradient;
+}
+
+function SVGGradient.init(self, obj)
+	local obj = obj or {}
+	if not obj.xform then
+		obj.xform = ffi.new("double[6]");
+		transform2D.xformIdentity(obj.xform);
+	end
+	obj.stops = obj.stops or {};
+	obj.spread = obj.spread or 0;
+	obj.fx = obj.fx or 0;
+	obj.fy = obj.fy or 0;
+
+	setmetatable(obj, SVGGradient_mt);
+
+	return obj;
+end
+
+function SVGGradient.new(self, ...)
+	return self:init(...);
+end
+
+function SVGGradient.addStop(self, astop)
+	table.insert(self.stops, astop);
+end
+
+--[=[
 ffi.cdef[[
 typedef struct SVGPaint {
 	char type;
@@ -84,7 +114,30 @@ typedef struct SVGPaint {
 } SVGPaint_t;
 ]]
 local SVGPaint = ffi.typeof("struct SVGPaint");
+--]=]
+local SVGPaint = {}
+setmetatable(SVGPaint, {
+	__call = function(self, ...)
+		return self:new(...);
+	end,
+})
+local SVGPaint_mt = {
+	__index = SVGPaint;
+}
 
+function SVGPaint.init(self, obj)
+	obj = obj or {}
+
+	setmetatable(obj, SVGPaint_mt);
+
+	return obj;
+end
+
+function SVGPaint.new(self, ...)
+	return self:init(...);
+end
+
+--[=[
 ffi.cdef[[
 typedef struct SVGCachedPaint {
 	char type;
@@ -94,6 +147,38 @@ typedef struct SVGCachedPaint {
 } SVGCachedPaint_t;
 ]]
 local SVGCachedPaint = ffi.typeof("struct SVGCachedPaint")
+--]=]
+
+---[[
+local SVGCachedPaint = {}
+setmetatable(SVGCachedPaint, {
+	__call = function(self, ...)
+		return self:new(...);
+	end,
+})
+
+local SVGCachedPaint_mt = {
+	__index = SVGCachedPaint;
+}
+
+function SVGCachedPaint.init(self, obj)
+	obj = obj or {}
+	if not obj.xform then
+		obj.xform = ffi.new("double[6]");
+		--transform2D.xformIdentity(obj.xform);
+	end
+	obj.spread = obj.spread or 0;
+	obj.colors = obj.colors or ffi.new("uint32_t[256]");
+
+	setmetatable(obj, SVGCachedPaint_mt)
+
+	return obj;
+end
+
+function SVGCachedPaint.new(self, obj)
+	return self:init(obj);
+end
+--]]
 
 --[[
 	Initialize a SVGCachedPaint_t structure.  Depending
@@ -119,24 +204,24 @@ local function  initPaint(cache, paint, opacity)
 	local grad = paint.gradient;
 
 	cache.spread = grad.spread;
-	ffi.copy(cache.xform, grad.xform, ffi.sizeof("float")*6);
+	ffi.copy(cache.xform, grad.xform, ffi.sizeof(grad.xform));
 
-	if grad.nstops == 0 then
+	if #grad.stops == 0 then
 		for i = 0, 255 do
 			cache.colors[i] = 0;
 		end
-	elseif (grad.nstops == 1) then
+	elseif #grad.stops == 1 then
 		for i = 0, 255 do
-			cache.colors[i] = applyOpacity(grad.stops[0].color, opacity);
+			cache.colors[i] = applyOpacity(grad.stops[1].color, opacity);
 		end
 	else 
 		local cb = 0;
 		local ua, ub, du, u = 0,0,0,0;
 		local count=0;
 
-		local ca = applyOpacity(grad.stops[0].color, opacity);
-		local ua = clamp(grad.stops[0].offset, 0, 1);
-		local ub = clamp(grad.stops[grad.nstops-1].offset, ua, 1);
+		local ca = applyOpacity(grad.stops[1].color, opacity);
+		local ua = clamp(grad.stops[1].offset, 0, 1);
+		local ub = clamp(grad.stops[#grad.stops].offset, ua, 1);
 		local ia = ua * 255.0;
 		local ib = ub * 255.0;
 		
@@ -144,7 +229,7 @@ local function  initPaint(cache, paint, opacity)
 			cache.colors[i] = ca;
 		end
 
-		for i = 0, grad.nstops-2 do
+		for i = 1, #grad.stops-1 do
 			ca = applyOpacity(grad.stops[i].color, opacity);
 			cb = applyOpacity(grad.stops[i+1].color, opacity);
 			ua = clamp(grad.stops[i].offset, 0, 1);
@@ -171,14 +256,18 @@ local function  initPaint(cache, paint, opacity)
 end
 
 
-
+-- Enums
 export.LineJoin = LineJoin;
 export.LineCap = LineCap;
 export.PointFlags = PointFlags;
 export.PaintType = PaintType;
 
+-- Types
 export.SVGCachedPaint = SVGCachedPaint;
 export.SVGEdge = SVGEdge;
+export.SVGGradient = SVGGradient;
+export.SVGGradientStop = SVGGradientStop;
+
 export.SVGPaint = SVGPaint;
 export.SVGPoint = SVGPoint;
 
