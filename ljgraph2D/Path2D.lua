@@ -52,6 +52,14 @@ local Path2D_mt = {
 	__index = Path2D;
 }
 
+--[[
+	float* pts;					// Cubic bezier points: x0,y0, [cpx1,cpx1,cpx2,cpy2,x1,y1], ...
+	int npts;					// Total number of bezier points.
+	char closed;				// Flag indicating if shapes should be treated as closed.
+	float bounds[4];			// Tight bounding box of the shape [minx,miny,maxx,maxy].
+	struct NSVGpath* next;		// Pointer to next path, or NULL if last element.
+--]]
+
 function Path2D.init(self, ...)
 	local obj = {
 		tessTol = 0.25;

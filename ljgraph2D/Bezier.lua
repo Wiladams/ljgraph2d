@@ -7,5 +7,5 @@ local function eval(t, p0, p1, p2, p3)
 end
 
 return {
-	eval = evalBezier;
+	eval = eval;
 }

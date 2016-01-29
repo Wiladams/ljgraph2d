@@ -17,6 +17,10 @@ local FillRule = {
 	EVENODD = 1,
 };
 
+local Flags = {
+	VISIBLE = 0x01
+};
+
 local LineJoin = {
 		MITER = 0,
 		ROUND = 1,
@@ -42,6 +46,12 @@ local PointFlags = {
 		LEFT = 0x04,
 	};
 	
+local SpreadType = {
+	PAD = 0,
+	REFLECT = 1,
+	REPEAT = 2,
+};
+
 
 ffi.cdef[[
 typedef struct SVGedge {
@@ -274,10 +284,12 @@ end
 
 -- Enums
 export.FillRule = FillRule;
+export.Flags = Flags;
 export.LineJoin = LineJoin;
 export.LineCap = LineCap;
 export.PointFlags = PointFlags;
 export.PaintType = PaintType;
+export.SpreadType = SpreadType;
 
 -- Types
 export.SVGActiveEdge = SVGActiveEdge;

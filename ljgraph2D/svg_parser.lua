@@ -1,33 +1,3 @@
---[[
-/*
- * Copyright (c) 2013-14 Mikko Mononen memon@inside.org
- *
- * This software is provided 'as-is', without any express or implied
- * warranty.  In no event will the authors be held liable for any damages
- * arising from the use of this software.
- *
- * Permission is granted to anyone to use this software for any purpose,
- * including commercial applications, and to alter it and redistribute it
- * freely, subject to the following restrictions:
- *
- * 1. The origin of this software must not be misrepresented; you must not
- * claim that you wrote the original software. If you use this software
- * in a product, an acknowledgment in the product documentation would be
- * appreciated but is not required.
- * 2. Altered source versions must be plainly marked as such, and must not be
- * misrepresented as being the original software.
- * 3. This notice may not be removed or altered from any source distribution.
- *
- * The SVG parser is based on Anti-Graim Geometry 2.4 SVG example
- * Copyright (C) 2002-2004 Maxim Shemanarev (McSeem) (http://www.antigrain.com/)
- *
- * Arc calculation code based on canvg (https://code.google.com/p/canvg/)
- *
- * Bounding box calculation based on http://blog.hackers-cafe.net/2009/06/how-to-calculate-bezier-curves-bounding.html
- *
- */
---]]
-
 
 --[[
 // NanoSVG is a simple stupid single-header-file SVG parse. The output of the parser is a list of cubic bezier shapes.
@@ -51,158 +21,69 @@
 --[[
 /* Example Usage:
 	// Load
-	SNVGImage* image;
-	image = nsvgParseFromFile("test.svg", "px", 96);
-	printf("size: %f x %f\n", image->width, image->height);
+	local image = Image2D:ParseFromFile("test.svg", "px", 96);
+	printf("size: %f x %f\n", image.width, image.height);
+
 	// Use...
-	for (shape = image->shapes; shape != NULL; shape = shape->next) {
-		for (path = shape->paths; path != NULL; path = path->next) {
-			for (i = 0; i < path->npts-1; i += 3) {
-				float* p = &path->pts[i*2];
+	for _, shape in ipairs(image.shapes) do
+		for _, path in ipairs(shape.paths) do
+			for _, p in ipairs(path.pts) do
+				--float* p = &path->pts[i*2];
 				drawCubicBez(p[0],p[1], p[2],p[3], p[4],p[5], p[6],p[7]);
-			}
-		}
-	}
-	// Delete
-	nsvgDelete(image);
+			end
+		end
+	end
+
 */
 --]]
 
 local ffi = require("ffi")
+
 local SVGXmlParser = require("ljgraph2D.SVGXmlParser")
 local xform = require("ljgraph2D.transform2D")
 local Bezier = require("ljgraph2D.Bezier")
 local colors = require("ljgraph2D.colors")
+local SVGTypes = require("ljgraph2D.SVGTypes")
+local SVGPath = require("ljgraph2D.SVGPath")
+local SVGShape = require("ljgraph2D.SVGShape")
 
-local NSVG_RGB = colors.RGBA;
 
+local RGB = colors.RGBA;
 
-local NSVGpaintType = {
-	NSVG_PAINT_NONE = 0,
-	NSVG_PAINT_COLOR = 1,
-	NSVG_PAINT_LINEAR_GRADIENT = 2,
-	NSVG_PAINT_RADIAL_GRADIENT = 3,
-};
-
-local NSVGspreadType = {
-	NSVG_SPREAD_PAD = 0,
-	NSVG_SPREAD_REFLECT = 1,
-	NSVG_SPREAD_REPEAT = 2,
-};
+local PaintType = SVGTypes.PaintType;
+local FillRule = SVGTypes.FillRule;
+local SVGGradientStop = SVGTypes.SVGGradientStop;
+local SVGGradient = SVGTypes.SVGGradient;
+local SVGPaint = SVGTypes.SVGPaint;
 
 
 
+local SVG_PI = math.pi;	-- (3.14159265358979323846264338327f)
+local SVG_KAPPA90 = 0.5522847493	-- Length proportional to radius of a cubic bezier handle for 90-deg arcs.
+local SVG_EPSILON = 1e-12;
 
-
-local NSVGfillRule {
-	NSVG_FILLRULE_NONZERO = 0,
-	NSVG_FILLRULE_EVENODD = 1,
-};
-
-local NSVGflags {
-	NSVG_FLAGS_VISIBLE = 0x01
-};
-
-ffi.cdef[[
-typedef struct NSVGgradientStop {
-	unsigned int color;
-	float offset;
-} NSVGgradientStop;
-
-typedef struct NSVGgradient {
-	float xform[6];
-	char spread;
-	float fx, fy;
-	int nstops;
-	NSVGgradientStop stops[1];
-} NSVGgradient;
-
-typedef struct NSVGpaint {
-	char type;
-	union {
-		unsigned int color;
-		NSVGgradient* gradient;
-	};
-} NSVGpaint;
-
-typedef struct NSVGpath
-{
-	float* pts;					// Cubic bezier points: x0,y0, [cpx1,cpx1,cpx2,cpy2,x1,y1], ...
-	int npts;					// Total number of bezier points.
-	char closed;				// Flag indicating if shapes should be treated as closed.
-	float bounds[4];			// Tight bounding box of the shape [minx,miny,maxx,maxy].
-	struct NSVGpath* next;		// Pointer to next path, or NULL if last element.
-} NSVGpath;
-
-typedef struct NSVGshape
-{
-	char id[64];				// Optional 'id' attr of the shape or its group
-	NSVGpaint fill;				// Fill paint
-	NSVGpaint stroke;			// Stroke paint
-	float opacity;				// Opacity of the shape.
-	float strokeWidth;			// Stroke width (scaled).
-	float strokeDashOffset;		// Stroke dash offset (scaled).
-	float strokeDashArray[8];			// Stroke dash array (scaled).
-	char strokeDashCount;				// Number of dash values in dash array.
-	char strokeLineJoin;		// Stroke join type.
-	char strokeLineCap;			// Stroke cap type.
-	char fillRule;				// Fill rule, see NSVGfillRule.
-	unsigned char flags;		// Logical or of NSVG_FLAGS_* flags
-	float bounds[4];			// Tight bounding box of the shape [minx,miny,maxx,maxy].
-	NSVGpath* paths;			// Linked list of paths in the image.
-	struct NSVGshape* next;		// Pointer to next shape, or NULL if last element.
-} NSVGshape;
-
-typedef struct NSVGimage
-{
-	float width;				// Width of the image.
-	float height;				// Height of the image.
-	NSVGshape* shapes;			// Linked list of shapes in the image.
-} NSVGimage;
-]]
+local SVG_ALIGN_MIN = 0;
+local SVG_ALIGN_MID = 1;
+local SVG_ALIGN_MAX = 2;
+local SVG_ALIGN_NONE = 0;
+local SVG_ALIGN_MEET = 1;
+local SVG_ALIGN_SLICE = 2;
 
 
 
-local NSVG_PI = math.pi;	-- (3.14159265358979323846264338327f)
-local NSVG_KAPPA90 = 0.5522847493	-- Length proportional to radius of a cubic bezier handle for 90-deg arcs.
-
-local NSVG_ALIGN_MIN = 0;
-local NSVG_ALIGN_MID = 1;
-local NSVG_ALIGN_MAX = 2;
-local NSVG_ALIGN_NONE = 0;
-local NSVG_ALIGN_MEET = 1;
-local NSVG_ALIGN_SLICE = 2;
-
---[[
-#define NSVG_NOTUSED(v) do { (void)(1 ? (void)0 : ( (void)(v) ) ); } while(0)
---]]
-
-#define NSVG_RGB(r, g, b) (((unsigned int)r) | ((unsigned int)g << 8) | ((unsigned int)b << 16))
-
-
-
-
-
-local function self:minf(a, b) 
-	if a < b then return a else return b end;
-end
-
-local function self:maxf(a, b)
-	if a > b then return a else return b end
-end
+local minf = math.min;
+local maxf = math.max;
 
 -- Simple SVG parser.
+local SVG_MAX_ATTR = 128;
 
-local NSVG_MAX_ATTR = 128;
-
-local NSVGgradientUnits = {
+local SVGgradientUnits = {
 	NSVG_USER_SPACE = 0;
 	NSVG_OBJECT_SPACE = 1;
 };
 
-local NSVG_MAX_DASHES = 8;
 
-local NSVGunits = {
+local SVGunits = {
 	NSVG_UNITS_USER,
 	NSVG_UNITS_PX,
 	NSVG_UNITS_PT,
@@ -215,6 +96,14 @@ local NSVGunits = {
 	NSVG_UNITS_EX,
 };
 
+ffi.cdef[[
+typedef struct pt2D {
+	double x, y;
+} pt2D_t
+]]
+local pt2D = ffi.typeof("struct pt2D");
+
+--[[
 typedef struct NSVGcoordinate {
 	float value;
 	int units;
@@ -244,13 +133,17 @@ typedef struct NSVGgradientData
 	NSVGgradientStop* stops;
 	struct NSVGgradientData* next;
 } NSVGgradientData;
+--]]
+
+ffi.cdef[[
+static const int SVG_MAX_DASHES = 8;
 
 typedef struct NSVGattrib
 {
 	char id[64];
-	float xform[6];
-	unsigned int fillColor;
-	unsigned int strokeColor;
+	double xform[6];
+	uint32_t fillColor;
+	uint32_t strokeColor;
 	float opacity;
 	float fillOpacity;
 	float strokeOpacity;
@@ -258,7 +151,7 @@ typedef struct NSVGattrib
 	char strokeGradient[64];
 	float strokeWidth;
 	float strokeDashOffset;
-	float strokeDashArray[NSVG_MAX_DASHES];
+	float strokeDashArray[SVG_MAX_DASHES];
 	int strokeDashCount;
 	char strokeLineJoin;
 	char strokeLineCap;
@@ -271,6 +164,8 @@ typedef struct NSVGattrib
 	char hasStroke;
 	char visible;
 } NSVGattrib;
+]]
+
 
 --[[
 typedef struct NSVGparser
@@ -291,18 +186,18 @@ typedef struct NSVGparser
 } NSVGparser;
 --]]
 
-local NSVG_EPSILON = (1e-12);
 
-local function self:ptInBounds(float* pt, float* bounds)
 
-	return pt[0] >= bounds[0] && pt[0] <= bounds[2] && pt[1] >= bounds[1] && pt[1] <= bounds[3];
+local function ptInBounds(float* pt, float* bounds)
+	return pt[0] >= bounds[0] and 
+		pt[0] <= bounds[2] and 
+		pt[1] >= bounds[1] and
+		pt[1] <= bounds[3];
 end
 
 
+local function curveBoundary(float* bounds, float* curve)
 
-
-function NSVGParser.curveBounds(float* bounds, float* curve)
-{
 	int i, j, count;
 	double roots[2], a, b, c, b2ac, t, v;
 	float* v0 = &curve[0];
@@ -310,24 +205,25 @@ function NSVGParser.curveBounds(float* bounds, float* curve)
 	float* v2 = &curve[4];
 	float* v3 = &curve[6];
 
-	// Start the bounding box by end points
+	-- Start the bounding box by end points
 	bounds[0] = self:minf(v0[0], v3[0]);
 	bounds[1] = self:minf(v0[1], v3[1]);
 	bounds[2] = self:maxf(v0[0], v3[0]);
 	bounds[3] = self:maxf(v0[1], v3[1]);
 
-	// Bezier curve fits inside the convex hull of it's control points.
-	// If control points are inside the bounds, we're done.
-	if (self:ptInBounds(v1, bounds) && self:ptInBounds(v2, bounds))
+	-- Bezier curve fits inside the convex hull of it's control points.
+	-- If control points are inside the bounds, we're done.
+	if (ptInBounds(v1, bounds) and ptInBounds(v2, bounds)) then
 		return;
+	end
 
-	// Add bezier curve inflection points in X and Y.
+	-- Add bezier curve inflection points in X and Y.
 	for (i = 0; i < 2; i++) {
 		a = -3.0 * v0[i] + 9.0 * v1[i] - 9.0 * v2[i] + 3.0 * v3[i];
 		b = 6.0 * v0[i] - 12.0 * v1[i] + 6.0 * v2[i];
 		c = 3.0 * v1[i] - 3.0 * v0[i];
 		count = 0;
-		if (fabs(a) < NSVG_EPSILON) {
+		if (abs(a) < NSVG_EPSILON) {
 			if (fabs(b) > NSVG_EPSILON) {
 				t = -c / b;
 				if (t > NSVG_EPSILON && t < 1.0-NSVG_EPSILON)
@@ -350,42 +246,40 @@ function NSVGParser.curveBounds(float* bounds, float* curve)
 			bounds[2+i] = self:maxf(bounds[2+i], (float)v);
 		}
 	}
-}
+end
 
 
-local NSVGparser = {}
-setmetatable(NSVGparser, {
+local SVGParser = {}
+setmetatable(SVGParser, {
 	__call = function(self, ...)
 		return self:new(...);
 	end
 })
-local NSVGparser_mt = {
-	__index = NVSGParser;
+local SVGParser_mt = {
+	__index = SVGParser;
 }
 
-function NSVGparser.init()
+function SVGParser.init(self)
 	local obj = {}
-	setmetatable(obj, NSVGparser_mt);
+	setmetatable(obj, SVGParser_mt);
 
 
 
-	self.image = (NSVGimage*)malloc(sizeof(NSVGimage));
-	if (self.image == NULL) goto error;
-	memset(self.image, 0, sizeof(NSVGimage));
+	obj.image = SVGImage();
 
 	-- Init style
 	xform.xformIdentity(self.attr[0].xform);
 	memset(self.attr[0].id, 0, sizeof self.attr[0].id);
-	self.attr[0].fillColor = NSVG_RGB(0,0,0);
-	self.attr[0].strokeColor = NSVG_RGB(0,0,0);
+	self.attr[0].fillColor = RGB(0,0,0);
+	self.attr[0].strokeColor = RGB(0,0,0);
 	self.attr[0].opacity = 1;
 	self.attr[0].fillOpacity = 1;
 	self.attr[0].strokeOpacity = 1;
 	self.attr[0].stopOpacity = 1;
 	self.attr[0].strokeWidth = 1;
-	self.attr[0].strokeLineJoin = NSVG_JOIN_MITER;
-	self.attr[0].strokeLineCap = NSVG_CAP_BUTT;
-	self.attr[0].fillRule = NSVG_FILLRULE_NONZERO;
+	self.attr[0].strokeLineJoin = LineJoin.MITER;
+	self.attr[0].strokeLineCap = LineCap.BUTT;
+	self.attr[0].fillRule = FillRule.NONZERO;
 	self.attr[0].hasFill = 1;
 	self.attr[0].visible = 1;
 
@@ -393,16 +287,16 @@ function NSVGparser.init()
 	return obj;
 end
 
-function NSVGparser.new(char* input, const char* units, float dpi)
+function SVGParser.new()
 	local parser = self:init()
 
 	return parser;
 end
 
-function NSVGparser.parse(self, char* input, const char* units, dpi)
+function SVGParser.parse(self, input, units, dpi)
 	self.dpi = dpi;
 
-	self:parseXML(input, self:startElement, self:endElement, self:content, self);
+	self:parseXML(input, SVGParser.startElement, SVGParser.endElement, SVGParser.content, self);
 
 	-- Scale to viewBox
 	self:scaleToViewbox(units);
@@ -413,7 +307,7 @@ function NSVGparser.parse(self, char* input, const char* units, dpi)
 	return ret;
 end
 
-function NSVGparser.ParseFromFile(self, filename, units, dpi)
+function SVGParser.parseFromFile(self, filename, units, dpi)
 	local fp = io.open(filename, "rb")
 	if not fp then 
 		return 
@@ -423,62 +317,22 @@ function NSVGparser.ParseFromFile(self, filename, units, dpi)
 	fp:close();
 
 	local parser = NSVGparser();
-	parser:parse(data, units, dpi)
-
-	local image = nsvgParse(data, units, dpi);
+	local image = parser:parse(data, units, dpi)
 
 	return image;
 end
 
 
 
---[[
-function NSVGParser.deletePaths(NSVGpath* path)
-{
-	while (path) {
-		NSVGpath *next = path->next;
-		if (path->pts != NULL)
-			free(path->pts);
-		free(path);
-		path = next;
-	}
-}
-
-function NSVGParser.deletePaint(NSVGpaint* paint)
-{
-	if (paint->type == NSVG_PAINT_LINEAR_GRADIENT || paint->type == NSVG_PAINT_RADIAL_GRADIENT)
-		free(paint->gradient);
-}
-
-function NSVGParser.deleteGradientData(NSVGgradientData* grad)
-{
-	NSVGgradientData* next;
-	while (grad != NULL) {
-		next = grad->next;
-		free(grad->stops);
-		free(grad);
-		grad = next;
-	}
-}
-
-function NSVGParser.deleteParser(self)
-{
-	if (p != NULL) {
-		self:deletePaths(self.plist);
-		self:deleteGradientData(self.gradients);
-		nsvgDelete(self.image);
-		free(self.pts);
-		free(p);
-	}
-}
---]]
-
-function NSVGparser.resetPath(self)
+function SVGparser.resetPath(self)
 	self.npts = 0;
+	--self.pts = {};
 end
 
-function NSVGparser.addPoint(self, x, y)
-
+function SVGparser.addPoint(self, x, y)
+	table.insert(self.pts, pt2D({x,y}));
+	self.npts = self.npts + 1;
+--[[	
 	if (self.npts+1 > self.cpts) {
 		self.cpts = self.cpts ? self.cpts*2 : 8;
 		self.pts = (float*)realloc(self.pts, self.cpts*2*sizeof(float));
@@ -487,85 +341,79 @@ function NSVGparser.addPoint(self, x, y)
 	self.pts[self.npts*2+0] = x;
 	self.pts[self.npts*2+1] = y;
 	self.npts++;
+--]]
 end
 
-function NSVGParser.moveTo(self, x, y)
-
-	if (self.npts > 0) {
-		self.pts[(self.npts-1)*2+0] = x;
-		self.pts[(self.npts-1)*2+1] = y;
-	} else {
-		self:addPoint(p, x, y);
-	}
+function SVGParser.moveTo(self, x, y)
+	self:addPoint(x, y);
 end
 
-function NSVGParser.lineTo(self, x, y)
+-- Add a line segment.  The must be at least
+-- one starting point already
+function SVGParser.lineTo(self, x, y)
 
-	float px,py, dx,dy;
-	if (self.npts > 0) then
-		px = self.pts[(self.npts-1)*2+0];
-		py = self.pts[(self.npts-1)*2+1];
+	if #self.pts > 0 then
+		local lastpt = self.pts[#self.pts];
+		local px = lastpt.x;
+		local py = lastpt.y;
 		dx = x - px;
 		dy = y - py;
 		self:addPoint(px + dx/3.0, py + dy/3.0);
 		self:addPoint(x - dx/3.0, y - dy/3.0);
-		self;addPoint(x, y);
+		self:addPoint(x, y);
 	end
 end
 
-function NSVGParser.cubicBezTo(self, float cpx1, float cpy1, float cpx2, float cpy2, float x, float y)
-
+function SVGParser.cubicBezTo(self, cpx1, cpy1, cpx2, cpy2, x, y)
 	self:addPoint(cpx1, cpy1);
 	self:addPoint(cpx2, cpy2);
 	self:addPoint(x, y);
 end
 
-function NSVGParser:getAttr(self)
-	return &self.attr[self.attrHead];
+function SVGParser:getAttr(self)
+	return self.attr[self.attrHead];
 end
 
-function NSVGParser.pushAttr(self)
-
-	if (self.attrHead < NSVG_MAX_ATTR-1) then
-		self.attrHead++;
+function SVGParser.pushAttr(self)
+	if (self.attrHead < SVG_MAX_ATTR-1) then
+		self.attrHead = self.attrHead + 1;
 		memcpy(&self.attr[self.attrHead], &self.attr[self.attrHead-1], sizeof(NSVGattrib));
 	end
 end
 
-function NSVGParser.popAttr(self)
-
-	if (self.attrHead > 0)
-		self.attrHead--;
+function SVGParser.popAttr(self)
+	if (self.attrHead > 0) then
+		self.attrHead = self.attrHead - 1;
+	end
 end
 
-function NSVGParser.actualOrigX(self)
-{
+function SVGParser.actualOrigX(self)
 	return self.viewMinx;
-}
+end
 
-static float NSVGParser.actualOrigY(self)
-{
+function SVGParser.actualOrigY(self)
 	return self.viewMiny;
-}
+end
 
-static float NSVGParser.actualWidth(self)
-{
+function SVGParser.actualWidth(self)
 	return self.viewWidth;
-}
+end
 
-function NSVGParser.actualHeight(self)
+function SVGParser.actualHeight(self)
 	return self.viewHeight;
 end
 
-function NSVGParser.actualLength(self)
+function SVGParser.actualLength(self)
+	local w = self:actualWidth();
+	local h = self:actualHeight();
 
-	float w = self:actualWidth(p), h = self:actualHeight(p);
 	return sqrt(w*w + h*h) / sqrt(2.0);
 end
 
-function NSVGParser.convertToPixels(self, NSVGcoordinate c, float orig, float length)
+function SVGParser.convertToPixels(self, NSVGcoordinate c, orig, length)
 
-	NSVGattrib* attr = self:getAttr(p);
+	local attr = self:getAttr();
+	
 	switch (c.units) {
 		case NSVG_UNITS_USER:		return c.value;
 		case NSVG_UNITS_PX:			return c.value;
@@ -579,6 +427,7 @@ function NSVGParser.convertToPixels(self, NSVGcoordinate c, float orig, float le
 		case NSVG_UNITS_PERCENT:	return orig + c.value / 100.0f * length;
 		default:					return c.value;
 	}
+	
 	return c.value;
 end
 
@@ -694,7 +543,7 @@ function NSVGParser.getLocalBounds(float* bounds, NSVGshape *shape, float* xform
 			curve[2], curve[3] = xform.xformPoint(path->pts[(i+1)*2], path->pts[(i+1)*2+1], xform);
 			curve[4], curve[5] = xform.xformPoint(path->pts[(i+2)*2], path->pts[(i+2)*2+1], xform);
 			curve[6], curve[7] = xform.xformPoint(path->pts[(i+3)*2], path->pts[(i+3)*2+1], xform);
-			self:curveBounds(curveBounds, curve);
+			curveBoundary(curveBounds, curve);
 			if (first) {
 				bounds[0] = curveBounds[0];
 				bounds[1] = curveBounds[1];
@@ -839,7 +688,7 @@ function NSVGParser.addPath(self, char closed)
 	// Find bounds
 	for (i = 0; i < path->npts-1; i += 3) {
 		curve = &path->pts[i*2];
-		self:curveBounds(bounds, curve);
+		curveBoundary(bounds, curve);
 		if (i == 0) {
 			path->bounds[0] = bounds[0];
 			path->bounds[1] = bounds[1];
@@ -1263,7 +1112,7 @@ static int self:parseStrokeDashArray(self, const char* str, float* strokeDashArr
 	return count;
 }
 
-function NSVGParser.parseStyle(self, const char* str);
+--function NSVGParser.parseStyle(self, const char* str);
 
 static int self:parseAttr(self, const char* name, const char* value)
 {
@@ -1276,7 +1125,7 @@ static int self:parseAttr(self, const char* name, const char* value)
 	} else if (strcmp(name, "display") == 0) {
 		if (strcmp(value, "none") == 0)
 			attr->visible = 0;
-		// Don't reset ->visible on display:inline, one display:none hides the whole subtree
+		-- Don't reset ->visible on display:inline, one display:none hides the whole subtree
 
 	} else if (strcmp(name, "fill") == 0) {
 		if (strcmp(value, "none") == 0) {
@@ -1333,6 +1182,7 @@ static int self:parseAttr(self, const char* name, const char* value)
 	} else {
 		return 0;
 	}
+
 	return 1;
 }
 
@@ -1369,7 +1219,7 @@ static int self:parseNameValue(self, const char* start, const char* end)
 }
 
 function NSVGParser.parseStyle(self, const char* str)
-{
+
 	const char* start;
 	const char* end;
 
@@ -1387,22 +1237,21 @@ function NSVGParser.parseStyle(self, const char* str)
 		self:parseNameValue(p, start, end);
 		if (*str) ++str;
 	}
-}
+end
 
-function NSVGParser.parseAttribs(self, const char** attr)
-{
+function SVGParser.parseAttribs(self, const char** attr)
+
 	int i;
-	for (i = 0; attr[i]; i += 2)
-	{
+	for (i = 0; attr[i]; i += 2) do
 		if (strcmp(attr[i], "style") == 0)
 			self:parseStyle(p, attr[i + 1]);
 		else
 			self:parseAttr(p, attr[i], attr[i + 1]);
-	}
-}
+	end
+end
 
-static int self:getArgsPerElement(char cmd)
-{
+function SVGParser:getArgsPerElement(cmd)
+
 	switch (cmd) {
 		case 'v':
 		case 'V':
@@ -1410,7 +1259,6 @@ static int self:getArgsPerElement(char cmd)
 		case 'H':
 			return 1;
 		case 'm':
-		case 'M':
 		case 'l':
 		case 'L':
 		case 't':
@@ -1428,8 +1276,9 @@ static int self:getArgsPerElement(char cmd)
 		case 'A':
 			return 7;
 	}
+
 	return 0;
-}
+end
 
 function NSVGParser.pathMoveTo(self, float* cpx, float* cpy, float* args, int rel)
 {
@@ -2262,27 +2111,23 @@ function NSVGParser.startElement(self, const char* el, const char** attr)
 	}
 }
 
-NVSVGParser.endElement(self, el)
+function SVGParser.endElement(self, el)
 
-	--self = (NSVGparser*)ud;
-
-	if (strcmp(el, "g") == 0) then
-		self:popAttr(p);
-	elseif (strcmp(el, "path") == 0) then
-		p.pathFlag = 0;
-	elseif (strcmp(el, "defs") == 0) then
+	if el == "g" then
+		self:popAttr();
+	elseif el == "path" then
+		self.pathFlag = 0;
+	elseif el == "defs" then
 		p.defsFlag = 0;
 	end
 end
 
---[[
+
 function NSVGParser.content(void* ud, const char* s)
 {
-	NSVG_NOTUSED(ud);
-	NSVG_NOTUSED(s);
-	// empty
+	-- empty
 }
---]]
+
 
 function NSVGParser.imageBounds(self, float* bounds)
 {
@@ -2415,21 +2260,3 @@ function NVSGParser.scaleToViewbox(self, units)
 	}
 }
 
-
---[[
-void nsvgDelete(NSVGimage* image)
-{
-	NSVGshape *snext, *shape;
-	if (image == NULL) return;
-	shape = image->shapes;
-	while (shape != NULL) {
-		snext = shape->next;
-		self:deletePaths(shape->paths);
-		self:deletePaint(&shape->fill);
-		self:deletePaint(&shape->stroke);
-		free(shape);
-		shape = snext;
-	}
-	free(image);
-}
---]]
