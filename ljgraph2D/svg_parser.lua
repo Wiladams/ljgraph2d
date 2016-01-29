@@ -47,6 +47,8 @@ local SVGTypes = require("ljgraph2D.SVGTypes")
 local SVGPath = require("ljgraph2D.SVGPath")
 local SVGShape = require("ljgraph2D.SVGShape")
 
+local function sqr(x)  return x*x; end
+local function vmag(x, y)  return sqrt(x*x + y*y); end
 
 local RGB = colors.RGBA;
 
@@ -138,7 +140,7 @@ typedef struct NSVGgradientData
 ffi.cdef[[
 static const int SVG_MAX_DASHES = 8;
 
-typedef struct NSVGattrib
+typedef struct SVGattrib
 {
 	char id[64];
 	double xform[6];
@@ -163,28 +165,37 @@ typedef struct NSVGattrib
 	char hasFill;
 	char hasStroke;
 	char visible;
-} NSVGattrib;
+} SVGattrib_t;
 ]]
+local SVGattrib = ffi.typeof("struct SVGattrib")
 
 
---[[
-typedef struct NSVGparser
-{
-	NSVGattrib attr[NSVG_MAX_ATTR];
-	int attrHead;
-	float* pts;
-	int npts;
-	int cpts;
-	NSVGpath* plist;
-	NSVGimage* image;
-	NSVGgradientData* gradients;
-	float viewMinx, viewMiny, viewWidth, viewHeight;
-	int alignX, alignY, alignType;
-	float dpi;
-	char pathFlag;
-	char defsFlag;
-} NSVGparser;
---]]
+local function stack()
+	local obj = {}
+	setmetatable(obj, {
+		__index = obj;
+	})
+	
+	function obj.push(self, value)
+		table.insert(self, value);
+		return value;
+	end
+
+	function obj.pop(self)
+		return table.remove(self)
+	end
+
+	function obj.top(self)
+		if #self < 1 then
+			return nil;
+		end
+
+		return self[#self];
+	end
+
+	return obj;
+end
+
 
 
 
@@ -249,6 +260,25 @@ local function curveBoundary(float* bounds, float* curve)
 end
 
 
+--[[
+typedef struct NSVGparser
+{
+	NSVGattrib attr[NSVG_MAX_ATTR];
+	int attrHead;
+	float* pts;
+	int npts;
+	int cpts;
+	NSVGpath* plist;
+	NSVGimage* image;
+	NSVGgradientData* gradients;
+	float viewMinx, viewMiny, viewWidth, viewHeight;
+	int alignX, alignY, alignType;
+	float dpi;
+	char pathFlag;
+	char defsFlag;
+} NSVGparser;
+--]]
+
 local SVGParser = {}
 setmetatable(SVGParser, {
 	__call = function(self, ...)
@@ -260,12 +290,33 @@ local SVGParser_mt = {
 }
 
 function SVGParser.init(self)
-	local obj = {}
+	local obj = {
+		attr = stack();
+		pts = {};
+		plist = {};
+		image = SVGImage();
+		gradients = {};
+		
+		viewMinx = 0;
+		viewMiny = 0;
+		viewWidth = 0;
+		viewHeight = 0;
+
+		-- alignment
+		alignX = 0;
+		alignY = 0;
+		alignType = 0;
+
+		dpi = 96;
+
+		pathFlag = false;
+		defsFlag = false;
+	}
+	
 	setmetatable(obj, SVGParser_mt);
 
 
 
-	obj.image = SVGImage();
 
 	-- Init style
 	xform.xformIdentity(self.attr[0].xform);
@@ -371,10 +422,14 @@ function SVGParser.cubicBezTo(self, cpx1, cpy1, cpx2, cpy2, x, y)
 end
 
 function SVGParser:getAttr(self)
-	return self.attr[self.attrHead];
+	return self.attr:top();
+	--return self.attr[self.attrHead];
 end
 
 function SVGParser.pushAttr(self)
+	-- take the attribute currently on top 
+	-- make a copy
+	-- and push that copy on top of the stack
 	if (self.attrHead < SVG_MAX_ATTR-1) then
 		self.attrHead = self.attrHead + 1;
 		memcpy(&self.attr[self.attrHead], &self.attr[self.attrHead-1], sizeof(NSVGattrib));
@@ -382,9 +437,10 @@ function SVGParser.pushAttr(self)
 end
 
 function SVGParser.popAttr(self)
-	if (self.attrHead > 0) then
-		self.attrHead = self.attrHead - 1;
-	end
+	return self.attr:pop();
+	--if (self.attrHead > 0) then
+	--	self.attrHead = self.attrHead - 1;
+	--end
 end
 
 function SVGParser.actualOrigX(self)
@@ -410,7 +466,7 @@ function SVGParser.actualLength(self)
 	return sqrt(w*w + h*h) / sqrt(2.0);
 end
 
-function SVGParser.convertToPixels(self, NSVGcoordinate c, orig, length)
+function SVGParser.convertToPixels(self, SVGcoordinate c, orig, length)
 
 	local attr = self:getAttr();
 	
@@ -432,7 +488,8 @@ function SVGParser.convertToPixels(self, NSVGcoordinate c, orig, length)
 end
 
 function NSVGParser.findGradientData(self, const char* id)
-
+	return self.gradients[id];
+--[[	
 	NSVGgradientData* grad = self.gradients;
 	while (grad) {
 		if (strcmp(grad->id, id) == 0)
@@ -440,10 +497,11 @@ function NSVGParser.findGradientData(self, const char* id)
 		grad = grad->next;
 	}
 	return NULL;
+--]]
 end
 
-static NSVGgradient* NSVGParser.createGradient(self, const char* id, const float* localBounds, char* paintType)
-{
+function NSVGgradient* SVGParser.createGradient(self, id, const float* localBounds, char* paintType)
+
 	NSVGattrib* attr = self:getAttr(p);
 	NSVGgradientData* data = NULL;
 	NSVGgradientData* ref = NULL;
@@ -452,8 +510,10 @@ static NSVGgradient* NSVGParser.createGradient(self, const char* id, const float
 	float ox, oy, sw, sh, sl;
 	int nstops = 0;
 
-	data = self:findGradientData(p, id);
-	if (data == NULL) return NULL;
+	data = self:findGradientData(id);
+	if data == NULL then
+		return NULL;
+	end
 
 	// TODO: use ref to fill in all unset values too.
 	ref = data;
@@ -1448,14 +1508,15 @@ function NSVGParser.pathQuadBezShortTo(self, float* cpx, float* cpy,
 	*cpy = y2;
 }
 
-static float self:sqr(float x) { return x*x; }
-static float self:vmag(float x, float y) { return sqrtf(x*x + y*y); }
 
+--[[
 static float self:vecrat(float ux, float uy, float vx, float vy)
 {
 	return (ux*vx + uy*vy) / (self:vmag(ux,uy) * self:vmag(vx,vy));
 }
+--]]
 
+--[[
 static float self:vecang(float ux, float uy, float vx, float vy)
 {
 	float r = self:vecrat(ux,uy, vx,vy);
@@ -1463,7 +1524,9 @@ static float self:vecang(float ux, float uy, float vx, float vy)
 	if (r > 1.0f) r = 1.0f;
 	return ((ux*vy < uy*vx) ? -1.0f : 1.0f) * acosf(r);
 }
+--]]
 
+--[[
 function NSVGParser.pathArcTo(self, float* cpx, float* cpy, float* args, int rel)
 {
 	// Ported from canvg (https://code.google.com/p/canvg/)
@@ -1582,8 +1645,9 @@ function NSVGParser.pathArcTo(self, float* cpx, float* cpy, float* args, int rel
 	*cpx = x2;
 	*cpy = y2;
 }
+--]]
 
-
+--[[
 function NSVGParser.parsePath(self, const char** attr)
 {
 	const char* s = NULL;
@@ -1715,7 +1779,9 @@ function NSVGParser.parsePath(self, const char** attr)
 
 	self:addShape(p);
 }
+--]]
 
+--[[
 function NSVGParser.parseRect(self, const char** attr)
 {
 	float x = 0.0f;
@@ -1770,7 +1836,9 @@ function NSVGParser.parseRect(self, const char** attr)
 		self:addShape(p);
 	}
 }
+--]]
 
+--[[
 function NSVGParser.parseCircle(self, const char** attr)
 {
 	float cx = 0.0f;
@@ -1800,7 +1868,9 @@ function NSVGParser.parseCircle(self, const char** attr)
 		self:addShape(p);
 	}
 }
+--]]
 
+--[[
 function NSVGParser.parseEllipse(self, const char** attr)
 {
 	float cx = 0.0f;
@@ -1833,7 +1903,9 @@ function NSVGParser.parseEllipse(self, const char** attr)
 		self:addShape(p);
 	}
 }
+--]]
 
+--[[
 function NSVGParser.parseLine(self, const char** attr)
 {
 	float x1 = 0.0;
@@ -1860,7 +1932,9 @@ function NSVGParser.parseLine(self, const char** attr)
 
 	self:addShape(p);
 }
+--]]
 
+--[[
 function NSVGParser.parsePoly(self, const char** attr, int closeFlag)
 {
 	int i;
@@ -1896,7 +1970,9 @@ function NSVGParser.parsePoly(self, const char** attr, int closeFlag)
 
 	self:addShape(p);
 }
+--]]
 
+--[[
 function NSVGParser.parseSVG(self, const char** attr)
 {
 	int i;
@@ -1936,7 +2012,9 @@ function NSVGParser.parseSVG(self, const char** attr)
 		}
 	}
 }
+--]]
 
+--[[
 function NSVGParser.parseGradient(self, const char** attr, char type)
 {
 	int i;
@@ -2006,7 +2084,9 @@ function NSVGParser.parseGradient(self, const char** attr, char type)
 	grad->next = self.gradients;
 	self.gradients = grad;
 }
+--]]
 
+--[[
 function NSVGParser.parseGradientStop(self, const char** attr)
 {
 	NSVGattrib* curAttr = self:getAttr(p);
@@ -2048,9 +2128,11 @@ function NSVGParser.parseGradientStop(self, const char** attr)
 	stop->color |= (unsigned int)(curAttr->stopOpacity*255) << 24;
 	stop->offset = curAttr->stopOffset;
 }
+--]]
+
 
 function NSVGParser.startElement(self, const char* el, const char** attr)
-{
+--[[
 	--self = (NSVGparser*)ud;
 
 	if (self.defsFlag) {
@@ -2109,7 +2191,9 @@ function NSVGParser.startElement(self, const char* el, const char** attr)
 	} else if (strcmp(el, "svg") == 0) {
 		self:parseSVG(p, attr);
 	}
-}
+--]]
+end
+
 
 function SVGParser.endElement(self, el)
 
@@ -2124,51 +2208,49 @@ end
 
 
 function NSVGParser.content(void* ud, const char* s)
-{
 	-- empty
-}
+end
 
 
-function NSVGParser.imageBounds(self, float* bounds)
-{
-	NSVGshape* shape;
-	shape = self.image->shapes;
-	if (shape == NULL) {
+function NSVGParser.imageBounds(self, bounds)
+
+	if (self.image.shapes < 1 then
 		bounds[0] = bounds[1] = bounds[2] = bounds[3] = 0.0;
 		return;
-	}
-	bounds[0] = shape->bounds[0];
-	bounds[1] = shape->bounds[1];
-	bounds[2] = shape->bounds[2];
-	bounds[3] = shape->bounds[3];
-	for (shape = shape->next; shape != NULL; shape = shape->next) {
-		bounds[0] = self:minf(bounds[0], shape->bounds[0]);
-		bounds[1] = self:minf(bounds[1], shape->bounds[1]);
-		bounds[2] = self:maxf(bounds[2], shape->bounds[2]);
-		bounds[3] = self:maxf(bounds[3], shape->bounds[3]);
-	}
-}
+	end
 
-function SVGParser.self:viewAlign(float content, float container, int type)
-{
-	if (type == NSVG_ALIGN_MIN)
+	for _, shape in ipairs(self.image.shapes) do
+		bounds[0] = minf(bounds[0], shape.bounds[0]);
+		bounds[1] = minf(bounds[1], shape.bounds[1]);
+		bounds[2] = maxf(bounds[2], shape.bounds[2]);
+		bounds[3] = maxf(bounds[3], shape.bounds[3]);
+	end
+
+	return bounds[0], bounds[1], bounds[2], bounds[3];
+end
+
+local function viewAlign(content, container, kind)
+
+	if (kind == SVG_ALIGN_MIN) then
 		return 0;
-	else if (type == NSVG_ALIGN_MAX)
+	elseif (kind == SVG_ALIGN_MAX)
 		return container - content;
-	// mid
-	return (container - content) * 0.5f;
-}
+	end
 
-function SVGParser.self:scaleGradient(NSVGgradient* grad, float tx, float ty, float sx, float sy)
-{
-	grad->xform[0] *= sx;
-	grad->xform[1] *= sx;
-	grad->xform[2] *= sy;
-	grad->xform[3] *= sy;
-	grad->xform[4] += tx*sx;
-	grad->xform[5] += ty*sx;
-}
+	-- mid
+	return (container - content) * 0.5;
+end
 
+local function scaleGradient(grad, tx, ty, sx, sy)
+	grad.xform[0] = grad.xform[0] *sx;
+	grad.xform[1] = grad.xform[1] *sx;
+	grad.xform[2] = grad.xform[2]sy;
+	grad.xform[3] = grad.xform[3]sy;
+	grad.xform[4] = grad.xform[4] + tx*sx;
+	grad.xform[5] = grad.xform[2] + ty*sx;
+end
+
+--[[
 function NVSGParser.scaleToViewbox(self, units)
 
 	NSVGshape* shape;
@@ -2212,19 +2294,19 @@ function NVSGParser.scaleToViewbox(self, units)
 	if (self.alignType == NSVG_ALIGN_MEET) {
 		// fit whole image into viewbox
 		sx = sy = self:minf(sx, sy);
-		tx += self:viewAlign(self.viewWidth*sx, self.image->width, self.alignX) / sx;
-		ty += self:viewAlign(self.viewHeight*sy, self.image->height, self.alignY) / sy;
+		tx += viewAlign(self.viewWidth*sx, self.image->width, self.alignX) / sx;
+		ty += viewAlign(self.viewHeight*sy, self.image->height, self.alignY) / sy;
 	} else if (self.alignType == NSVG_ALIGN_SLICE) {
 		// fill whole viewbox with image
 		sx = sy = self:maxf(sx, sy);
-		tx += self:viewAlign(self.viewWidth*sx, self.image->width, self.alignX) / sx;
-		ty += self:viewAlign(self.viewHeight*sy, self.image->height, self.alignY) / sy;
+		tx += viewAlign(self.viewWidth*sx, self.image->width, self.alignX) / sx;
+		ty += viewAlign(self.viewHeight*sy, self.image->height, self.alignY) / sy;
 	}
 
-	// Transform
-	sx *= us;
-	sy *= us;
-	avgs = (sx+sy) / 2.0f;
+	-- Transform
+	sx = sx*us;
+	sy = sy*us;
+	avgs = (sx+sy) / 2.0;
 	for (shape = self.image->shapes; shape != NULL; shape = shape->next) {
 		shape->bounds[0] = (shape->bounds[0] + tx) * sx;
 		shape->bounds[1] = (shape->bounds[1] + ty) * sy;
@@ -2243,12 +2325,12 @@ function NVSGParser.scaleToViewbox(self, units)
 		}
 
 		if (shape->fill.type == NSVG_PAINT_LINEAR_GRADIENT || shape->fill.type == NSVG_PAINT_RADIAL_GRADIENT) {
-			self:scaleGradient(shape->fill.gradient, tx,ty, sx,sy);
+			scaleGradient(shape->fill.gradient, tx,ty, sx,sy);
 			memcpy(t, shape->fill.gradient->xform, sizeof(float)*6);
 			xform.xformInverse(shape->fill.gradient->xform, t);
 		}
 		if (shape->stroke.type == NSVG_PAINT_LINEAR_GRADIENT || shape->stroke.type == NSVG_PAINT_RADIAL_GRADIENT) {
-			self:scaleGradient(shape->stroke.gradient, tx,ty, sx,sy);
+			scaleGradient(shape->stroke.gradient, tx,ty, sx,sy);
 			memcpy(t, shape->stroke.gradient->xform, sizeof(float)*6);
 			xform.xformInverse(shape->stroke.gradient->xform, t);
 		}
@@ -2259,4 +2341,6 @@ function NVSGParser.scaleToViewbox(self, units)
 			shape->strokeDashArray[i] *= avgs;
 	}
 }
+]]
 
+return SVGParser

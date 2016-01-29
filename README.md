@@ -22,3 +22,6 @@ The routines that support SVG shapes, are the same to support True Type Fonts, s
 those turn into simple bezier curves, lines and polygons.  Similarly, just about
 any graphics API can be supported with an API specific skin, while maintaining 
 a small core.
+
+This is obviously a work in progress.  It's not consumable as yet, but there are a 
+few test cases along the way.
