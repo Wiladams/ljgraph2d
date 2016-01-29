@@ -118,7 +118,9 @@ local function fillActiveEdges(scanline, len, edges, maxWeight, xmin, xmax, fill
 end
 
 
-local Raster2D = {}
+local Raster2D = {
+	
+}
 setmetatable(Raster2D, {
 	__call = function(self, ...)
 		return self:new(...)
