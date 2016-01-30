@@ -471,16 +471,16 @@ function SVGParser.convertToPixels(self, SVGcoordinate c, orig, length)
 	local attr = self:getAttr();
 	
 	switch (c.units) {
-		case NSVG_UNITS_USER:		return c.value;
-		case NSVG_UNITS_PX:			return c.value;
-		case NSVG_UNITS_PT:			return c.value / 72.0f * self.dpi;
-		case NSVG_UNITS_PC:			return c.value / 6.0f * self.dpi;
-		case NSVG_UNITS_MM:			return c.value / 25.4f * self.dpi;
-		case NSVG_UNITS_CM:			return c.value / 2.54f * self.dpi;
-		case NSVG_UNITS_IN:			return c.value * self.dpi;
-		case NSVG_UNITS_EM:			return c.value * attr->fontSize;
-		case NSVG_UNITS_EX:			return c.value * attr->fontSize * 0.52f; // x-height of Helvetica.
-		case NSVG_UNITS_PERCENT:	return orig + c.value / 100.0f * length;
+		case SVG_UNITS_USER:		return c.value;
+		case SVG_UNITS_PX:			return c.value;
+		case SVG_UNITS_PT:			return c.value / 72.0f * self.dpi;
+		case SVG_UNITS_PC:			return c.value / 6.0f * self.dpi;
+		case SVG_UNITS_MM:			return c.value / 25.4f * self.dpi;
+		case SVG_UNITS_CM:			return c.value / 2.54f * self.dpi;
+		case SVG_UNITS_IN:			return c.value * self.dpi;
+		case SVG_UNITS_EM:			return c.value * attr->fontSize;
+		case SVG_UNITS_EX:			return c.value * attr->fontSize * 0.52f; // x-height of Helvetica.
+		case SVG_UNITS_PERCENT:	return orig + c.value / 100.0f * length;
 		default:					return c.value;
 	}
 	
