@@ -54,6 +54,8 @@ local SVGImage = require("ljgraph2D.SVGImage")
 local function sqr(x)  return x*x; end
 local function vmag(x, y)  return sqrt(x*x + y*y); end
 local sqrt = math.sqrt;
+local fabs = math.abs;
+
 
 local RGB = colors.RGBA;
 
@@ -692,7 +694,7 @@ function SVGParser.addShape(self)
 	shape.opacity = attr.opacity;
 
 	shape.paths = self.plist;
-	self.plist = NULL;
+	self.plist = {};
 
 --[[
 	-- Calculate shape bounds
@@ -758,7 +760,6 @@ function SVGParser.addPath(self, closed)
 
 
 	local attr = self:getAttr();
-	--NSVGpath* path = NULL;
 	local  bounds = ffi.new("double[4]");
 	--float* curve;
 	--int i;
@@ -778,9 +779,10 @@ function SVGParser.addPath(self, closed)
 --[[
 	path.pts = (float*)malloc(self.npts*2*sizeof(float));
 	if (path.pts == NULL) goto error;
+--]]
 	path.closed = closed;
 	path.npts = self.npts;
-
+--[[
 	-- Transform path.
 	for (i = 0; i < self.npts; ++i)
 		path.pts[i*2], path.pts[i*2+1] = xform.xformPoint(self.pts[i*2], self.pts[i*2+1], attr.xform);
@@ -996,8 +998,8 @@ function SVGParser.parseCoordinate(self, str, orig, length)
 end
 
 --[[
-static int self:parseTransformArgs(const char* str, float* args, int maxNa, int* na)
-{
+function SVGParser.parseTransformArgs(self, const char* str, float* args, int maxNa, int* na)
+
 	const char* end;
 	const char* ptr;
 	char it[64];
@@ -1013,7 +1015,7 @@ static int self:parseTransformArgs(const char* str, float* args, int maxNa, int*
 		return 1;
 
 	while (ptr < end) {
-		if (*ptr == '-' || *ptr == '+' || *ptr == '.' || self:isdigit(*ptr)) {
+		if (*ptr == '-' or *ptr == '+' or *ptr == '.' or isdigit(*ptr)) {
 			if (*na >= maxNa) return 0;
 			ptr = self:parseNumber(ptr, it, 64);
 			args[(*na)++] = (float)atof(it);
@@ -1022,7 +1024,7 @@ static int self:parseTransformArgs(const char* str, float* args, int maxNa, int*
 		}
 	}
 	return (int)(end - str);
-}
+end
 --]]
 
 --[[
@@ -1140,9 +1142,10 @@ function NSVGParser.parseTransform(float* xform, const char* str)
 }
 --]]
 
+
+function SVGParser.parseUrl(self, id, str)
+print("parseUrl - BEGIN: ", id, str)
 --[[
-function NSVGParser.parseUrl(char* id, const char* str)
-{
 	int i = 0;
 	str += 4; -- "url(";
 	if (*str == '#')
@@ -1152,32 +1155,39 @@ function NSVGParser.parseUrl(char* id, const char* str)
 		i++;
 	}
 	id[i] = '\0';
-}
+--]]
+	return id;
+end
 
-static char self:parseLineCap(const char* str)
-{
-	if (strcmp(str, "butt") == 0)
-		return NSVG_CAP_BUTT;
-	else if (strcmp(str, "round") == 0)
-		return NSVG_CAP_ROUND;
-	else if (strcmp(str, "square") == 0)
-		return NSVG_CAP_SQUARE;
-	// TODO: handle inherit.
-	return NSVG_CAP_BUTT;
-}
+function SVGParser.parseLineCap(self, str)
+	--return LineCap[str] or LineCap.BUTT;
+	
+	if str == "butt" then
+		return LineCap.BUTT;
+	elseif str == "round" then
+		return LineCap.ROUND;
+	elseif str == "square" then
+		return LineCap.SQUARE;
+	end
 
-static char self:parseLineJoin(const char* str)
-{
-	if (strcmp(str, "miter") == 0)
-		return NSVG_JOIN_MITER;
-	else if (strcmp(str, "round") == 0)
-		return NSVG_JOIN_ROUND;
-	else if (strcmp(str, "bevel") == 0)
-		return NSVG_JOIN_BEVEL;
-	// TODO: handle inherit.
-	return NSVG_CAP_BUTT;
-}
+	-- TODO: handle inherit.
+	return LineCap.BUTT;
+end
 
+function SVGParser.parseLineJoin(self, str)
+	if str == "miter" then
+		return LineJoin.MITER;
+	elseif str == "round" then
+		return LineJoin.ROUND;
+	elseif str == "bevel" then
+		return LineJoin.BEVEL;
+	end
+	
+	-- TODO: handle inherit.
+	return LineCap.BUTT;
+end
+
+--[[
 static char self:parseFillRule(const char* str)
 {
 	if (strcmp(str, "nonzero") == 0)
@@ -1383,8 +1393,6 @@ function SVGParser.parseStyle(self, s)
 
 end
 
-
-
 function SVGParser.parseAttribs(self, attr)
 	for k,v in pairs(attr) do
 		if k == "style" then
@@ -1395,47 +1403,16 @@ function SVGParser.parseAttribs(self, attr)
 	end
 end
 
---[[
-function SVGParser.getArgsPerElement(self, cmd)
-
-	switch (cmd) {
-		case 'v':
-		case 'V':
-		case 'h':
-		case 'H':
-			return 1;
-		case 'm':
-		case 'l':
-		case 'L':
-		case 't':
-		case 'T':
-			return 2;
-		case 'q':
-		case 'Q':
-		case 's':
-		case 'S':
-			return 4;
-		case 'c':
-		case 'C':
-			return 6;
-		case 'a':
-		case 'A':
-			return 7;
-	}
-
-	return 0;
-end
---]]
-
 function SVGParser.pathMoveTo(self, cpx, cpy, args, rel)
 
 	if rel then
-		cpx = cpx + args[0];
-		cpy = cpy + args[1];
+		cpx = cpx + args[1];
+		cpy = cpy + args[2];
 	else
-		cpx = args[0];
-		cpy = args[1];
+		cpx = args[1];
+		cpy = args[2];
 	end
+
 	self:moveTo(cpx, cpy);
 
 	return cpx, cpy;
@@ -1468,8 +1445,6 @@ function SVGParser.pathHLineTo(self, cpx, cpy, args, rel)
 
 	return cpx, cpy;
 end
-
-
 
 function SVGParser.pathVLineTo(self, cpx, cpy, args, rel)
 	if rel then
@@ -1543,97 +1518,98 @@ function SVGParser.pathCubicBezShortTo(self, cpx, cpy,cpx2, cpy2, args, rel)
 	return cpx, cpy, cpx2, cpy2;
 end
 
---[[
-function SVGParser.pathQuadBezTo(self, float* cpx, float* cpy,
-								float* cpx2, float* cpy2, float* args, int rel)
-{
-	float x1, y1, x2, y2, cx, cy;
-	float cx1, cy1, cx2, cy2;
+function SVGParser.pathQuadBezTo(self, cpx, cpy, cpx2, cpy2, args, rel)
+	local x1 = cpx;
+	local y1 = cpy;
 
-	x1 = *cpx;
-	y1 = *cpy;
-	if (rel) {
-		cx = *cpx + args[0];
-		cy = *cpy + args[1];
-		x2 = *cpx + args[2];
-		y2 = *cpy + args[3];
-	} else {
-		cx = args[0];
-		cy = args[1];
-		x2 = args[2];
-		y2 = args[3];
-	}
+	local	cx = args[1];
+	local	cy = args[2];
+	local	x2 = args[3];
+	local	y2 = args[4];
 
-	// Convert to cubic bezier
-	cx1 = x1 + 2.0f/3.0f*(cx - x1);
-	cy1 = y1 + 2.0f/3.0f*(cy - y1);
-	cx2 = x2 + 2.0f/3.0f*(cx - x2);
-	cy2 = y2 + 2.0f/3.0f*(cy - y2);
+	if rel then
+		cx = cx + cpx;
+		cy = cy + cpy;
+		x2 = x2 + cpx;
+		y2 = y2 + cpy;
+	end
+
+	-- Convert to cubic bezier
+	local cx1 = x1 + 2.0/3.0*(cx - x1);
+	local cy1 = y1 + 2.0/3.0*(cy - y1);
+	local cx2 = x2 + 2.0/3.0*(cx - x2);
+	local cy2 = y2 + 2.0/3.0*(cy - y2);
 
 	self:cubicBezTo(p, cx1,cy1, cx2,cy2, x2,y2);
 
-	*cpx2 = cx;
-	*cpy2 = cy;
-	*cpx = x2;
-	*cpy = y2;
-}
---]]
+	cpx2 = cx;
+	cpy2 = cy;
+	cpx = x2;
+	cpy = y2;
 
---[[
-function NSVGParser.pathQuadBezShortTo(self, float* cpx, float* cpy,
-									 float* cpx2, float* cpy2, float* args, int rel)
-{
-	float x1, y1, x2, y2, cx, cy;
-	float cx1, cy1, cx2, cy2;
+	return cpx, cpy, cpx2, cpy2;
+end
 
-	x1 = *cpx;
-	y1 = *cpy;
-	if (rel) {
-		x2 = *cpx + args[0];
-		y2 = *cpy + args[1];
-	} else {
-		x2 = args[0];
-		y2 = args[1];
-	}
+function SVGParser.pathQuadBezShortTo(self, cpx, cpy, cpx2, cpy2, args, rel)
 
-	cx = 2*x1 - *cpx2;
-	cy = 2*y1 - *cpy2;
+	local x1 = cpx;
+	local y1 = cpy;
+	local x2 = args[1];
+	local y2 = args[2];
 
-	// Convert to cubix bezier
-	cx1 = x1 + 2.0f/3.0f*(cx - x1);
-	cy1 = y1 + 2.0f/3.0f*(cy - y1);
-	cx2 = x2 + 2.0f/3.0f*(cx - x2);
-	cy2 = y2 + 2.0f/3.0f*(cy - y2);
+	if rel then
+		x2 = x2 + cpx;
+		y2 = y2 + cpy;
+	end
+
+	local cx = 2*x1 - cpx2;
+	local cy = 2*y1 - cpy2;
+
+	-- Convert to cubix bezier
+	local cx1 = x1 + 2.0/3.0*(cx - x1);
+	local cy1 = y1 + 2.0/3.0*(cy - y1);
+	local cx2 = x2 + 2.0/3.0*(cx - x2);
+	local cy2 = y2 + 2.0/3.0*(cy - y2);
 
 	self:cubicBezTo(p, cx1,cy1, cx2,cy2, x2,y2);
 
-	*cpx2 = cx;
-	*cpy2 = cy;
-	*cpx = x2;
-	*cpy = y2;
-}
---]]
+	cpx2 = cx;
+	cpy2 = cy;
+	cpx = x2;
+	cpy = y2;
 
---[[
-static float self:vecrat(float ux, float uy, float vx, float vy)
-{
-	return (ux*vx + uy*vy) / (self:vmag(ux,uy) * self:vmag(vx,vy));
-}
---]]
+	return cpx, cpy, cpx2, cpy2;
+end
 
---[[
-static float self:vecang(float ux, float uy, float vx, float vy)
-{
-	float r = self:vecrat(ux,uy, vx,vy);
-	if (r < -1.0f) r = -1.0f;
-	if (r > 1.0f) r = 1.0f;
-	return ((ux*vy < uy*vx) ? -1.0f : 1.0f) * acosf(r);
-}
---]]
+local function vecrat(ux, uy, vx, vy)
+	return (ux*vx + uy*vy) / (vmag(ux,uy) * vmag(vx,vy));
+end
 
+
+
+local function vecang(ux, uy, vx, vy)
+
+	local r = vecrat(ux,uy, vx,vy);
+	if (r < -1.0) then
+		r = -1.0;
+	end
+
+	if (r > 1.0) then
+		r = 1.0;
+	end
+
+	local acs = acos(r);
+	if (ux*vy < uy*vx) then 
+		return -1.0 * acs;
+	end
+
+	return acs;
+end
+
+
+
+function SVGParser.pathArcTo(self, cpx, cpy, args, rel)
 --[[
-function NSVGParser.pathArcTo(self, float* cpx, float* cpy, float* args, int rel)
-{
 	// Ported from canvg (https://code.google.com/p/canvg/)
 	float rx, ry, rotx;
 	float x1, y1, x2, y2, cx, cy, dx, dy, d;
@@ -1746,11 +1722,14 @@ function NSVGParser.pathArcTo(self, float* cpx, float* cpy, float* args, int rel
 		ptanx = tanx;
 		ptany = tany;
 	}
-
-	*cpx = x2;
-	*cpy = y2;
-}
 --]]
+	cpx = x2;
+	cpy = y2;
+	
+	return cpx, cpy;
+end
+
+
 
 
 function parsePath(input)
@@ -2045,37 +2024,41 @@ print("RECT: ", x, y, w, h, rx, ry)
 end
 
 
---[[
-function NSVGParser.parseCircle(self, const char** attr)
-{
-	float cx = 0.0f;
-	float cy = 0.0f;
-	float r = 0.0f;
-	int i;
 
-	for (i = 0; attr[i]; i += 2) {
-		if (!self:parseAttr(p, attr[i], attr[i + 1])) {
-			if (strcmp(attr[i], "cx") == 0) cx = self:parseCoordinate(p, attr[i+1], self:actualOrigX(p), self:actualWidth(p));
-			if (strcmp(attr[i], "cy") == 0) cy = self:parseCoordinate(p, attr[i+1], self:actualOrigY(p), self:actualHeight(p));
-			if (strcmp(attr[i], "r") == 0) r = fabsf(self:parseCoordinate(p, attr[i+1], 0.0f, self:actualLength(p)));
-		}
-	}
+function SVGParser.parseCircle(self, attr)
 
-	if (r > 0.0f) {
+	local cx = 0.0;
+	local cy = 0.0;
+	local r = 0.0;
+
+	--for (i = 0; attr[i]; i += 2) {
+	for name, value in pairs(attr) do
+		if (not self:parseAttr(name, value)) then
+			if name == "cx" then
+				cx = self:parseCoordinate(value, self:actualOrigX(), self:actualWidth());
+			elseif name == "cy" then
+				cy = self:parseCoordinate(value, self:actualOrigY(), self:actualHeight());
+			elseif name == "r" then
+				r = fabs(self:parseCoordinate(value, 0.0, self:actualLength()));
+			end
+		end
+	end
+
+	if (r > 0.0) then
 		self:resetPath();
 
-		self:moveTo(p, cx+r, cy);
-		self:cubicBezTo(p, cx+r, cy+r*NSVG_KAPPA90, cx+r*NSVG_KAPPA90, cy+r, cx, cy+r);
-		self:cubicBezTo(p, cx-r*NSVG_KAPPA90, cy+r, cx-r, cy+r*NSVG_KAPPA90, cx-r, cy);
-		self:cubicBezTo(p, cx-r, cy-r*NSVG_KAPPA90, cx-r*NSVG_KAPPA90, cy-r, cx, cy-r);
-		self:cubicBezTo(p, cx+r*NSVG_KAPPA90, cy-r, cx+r, cy-r*NSVG_KAPPA90, cx+r, cy);
+		self:moveTo(cx+r, cy);
+		self:cubicBezTo(cx+r, cy+r*SVG_KAPPA90, cx+r*SVG_KAPPA90, cy+r, cx, cy+r);
+		self:cubicBezTo(cx-r*SVG_KAPPA90, cy+r, cx-r, cy+r*SVG_KAPPA90, cx-r, cy);
+		self:cubicBezTo(cx-r, cy-r*SVG_KAPPA90, cx-r*SVG_KAPPA90, cy-r, cx, cy-r);
+		self:cubicBezTo(cx+r*SVG_KAPPA90, cy-r, cx+r, cy-r*SVG_KAPPA90, cx+r, cy);
 
 		self:addPath(p, 1);
 
 		self:addShape(p);
-	}
-}
---]]
+	end
+end
+
 
 
 function SVGParser.parseEllipse(self, attr)
@@ -2136,21 +2119,23 @@ function SVGParser.parseLine(self, attr)
 end
 
 
---[[
-function NSVGParser.parsePoly(self, const char** attr, int closeFlag)
-{
-	int i;
-	const char* s;
-	float args[2];
-	int nargs, npts = 0;
-	char item[64];
+
+function SVGParser.parsePoly(self, attr, closeFlag)
+
+	--int i;
+	--const char* s;
+	--float args[2];
+	--int nargs, npts = 0;
+	--char item[64];
 
 	self:resetPath();
 
-	for (i = 0; attr[i]; i += 2) {
-		if (!self:parseAttr(p, attr[i], attr[i + 1])) {
-			if (strcmp(attr[i], "points") == 0) {
-				s = attr[i + 1];
+	--for (i = 0; attr[i]; i += 2) {
+	for name, value in pairs(attr) do
+		if (not self:parseAttr(name, value)) then
+			if name == "points" then
+--[[
+				s = value;
 				nargs = 0;
 				while (*s) {
 					s = self:getNextPathItem(s, item);
@@ -2164,15 +2149,16 @@ function NSVGParser.parsePoly(self, const char** attr, int closeFlag)
 						npts++;
 					}
 				}
-			}
-		}
-	}
-
-	self:addPath(p, (char)closeFlag);
-
-	self:addShape(p);
-}
 --]]
+			end
+		end
+	end
+
+	self:addPath(closeFlag);
+
+	self:addShape();
+end
+
 
 
 function SVGParser.parseSVG(self, attrs)
