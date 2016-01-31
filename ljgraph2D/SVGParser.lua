@@ -417,7 +417,7 @@ function SVGParser.resetPath(self)
 end
 
 function SVGParser.addPoint(self, x, y)
-	table.insert(self.pts, pt2D({x,y}));
+	table.insert(self.pts, pt2D({tonumber(x),tonumber(y)}));
 	self.npts = self.npts + 1;
 end
 
@@ -1433,111 +1433,126 @@ function SVGParser.getArgsPerElement(self, cmd)
 
 	return 0;
 end
-
-function NSVGParser.pathMoveTo(self, float* cpx, float* cpy, float* args, int rel)
-{
-	if (rel) {
-		*cpx += args[0];
-		*cpy += args[1];
-	} else {
-		*cpx = args[0];
-		*cpy = args[1];
-	}
-	self:moveTo(p, *cpx, *cpy);
-}
-
-function NSVGParser.pathLineTo(self, float* cpx, float* cpy, float* args, int rel)
-{
-	if (rel) {
-		*cpx += args[0];
-		*cpy += args[1];
-	} else {
-		*cpx = args[0];
-		*cpy = args[1];
-	}
-	self:lineTo(p, *cpx, *cpy);
-}
-
-function NSVGParser.pathHLineTo(self, float* cpx, float* cpy, float* args, int rel)
-{
-	if (rel)
-		*cpx += args[0];
-	else
-		*cpx = args[0];
-	self:lineTo(p, *cpx, *cpy);
-}
 --]]
 
---[[
-function NSVGParser.pathVLineTo(self, float* cpx, float* cpy, float* args, int rel)
-{
-	if (rel)
-		*cpy += args[0];
+function SVGParser.pathMoveTo(self, cpx, cpy, args, rel)
+
+	if rel then
+		cpx = cpx + args[0];
+		cpy = cpy + args[1];
 	else
-		*cpy = args[0];
-	self:lineTo(p, *cpx, *cpy);
-}
+		cpx = args[0];
+		cpy = args[1];
+	end
+	self:moveTo(cpx, cpy);
 
-function NSVGParser.pathCubicBezTo(self, float* cpx, float* cpy,
-								 float* cpx2, float* cpy2, float* args, int rel)
-{
-	float x2, y2, cx1, cy1, cx2, cy2;
+	return cpx, cpy;
+end
 
-	if (rel) {
-		cx1 = *cpx + args[0];
-		cy1 = *cpy + args[1];
-		cx2 = *cpx + args[2];
-		cy2 = *cpy + args[3];
-		x2 = *cpx + args[4];
-		y2 = *cpy + args[5];
-	} else {
-		cx1 = args[0];
-		cy1 = args[1];
-		cx2 = args[2];
-		cy2 = args[3];
-		x2 = args[4];
-		y2 = args[5];
-	}
+function SVGParser.pathLineTo(self, cpx, cpy, args, rel)
+	if rel then
+		cpx = cpx + args[1];
+		cpy = cpx + args[2];
+	else
+		cpx = args[1];
+		cpy = args[2];
+	end
+
+	self:lineTo(cpx, cpy);
+
+	return cpx, cpy;
+end
+
+
+function SVGParser.pathHLineTo(self, cpx, cpy, args, rel)
+
+	if rel then
+		cpx = cpx + args[1];
+	else
+		cpx = args[1];
+	end
+
+	self:lineTo(cpx, cpy);
+
+	return cpx, cpy;
+end
+
+
+
+function SVGParser.pathVLineTo(self, cpx, cpy, args, rel)
+	if rel then
+		cpy = cpy + args[1];
+	else
+		cpy = args[1];
+	end
+
+	self:lineTo(cpx, cpy);
+
+	return cpx, cpy;
+end
+
+function SVGParser.pathCubicBezTo(self, cpx, cpy, cpx2, cpy2, args, rel)
+
+	local x2, y2, cx1, cy1, cx2, cy2 =0,0,0,0,0,0;
+
+	if (rel) then
+		cx1 = cpx + args[1];
+		cy1 = cpy + args[2];
+		cx2 = cpx + args[3];
+		cy2 = cpy + args[4];
+		x2 = cpx + args[5];
+		y2 = cpy + args[6];
+	else
+		cx1 = args[1];
+		cy1 = args[2];
+		cx2 = args[3];
+		cy2 = args[4];
+		x2 = args[5];
+		y2 = args[6];
+	end
 
 	self:cubicBezTo(p, cx1,cy1, cx2,cy2, x2,y2);
 
-	*cpx2 = cx2;
-	*cpy2 = cy2;
-	*cpx = x2;
-	*cpy = y2;
-}
+	cpx2 = cx2;
+	cpy2 = cy2;
+	cpx = x2;
+	cpy = y2;
 
-function NSVGParser.pathCubicBezShortTo(self, float* cpx, float* cpy,
-									  float* cpx2, float* cpy2, float* args, int rel)
-{
-	float x1, y1, x2, y2, cx1, cy1, cx2, cy2;
+	return cpx, cpy, cpx2, cpy2;
+end
 
-	x1 = *cpx;
-	y1 = *cpy;
-	if (rel) {
-		cx2 = *cpx + args[0];
-		cy2 = *cpy + args[1];
-		x2 = *cpx + args[2];
-		y2 = *cpy + args[3];
-	} else {
-		cx2 = args[0];
-		cy2 = args[1];
-		x2 = args[2];
-		y2 = args[3];
-	}
 
-	cx1 = 2*x1 - *cpx2;
-	cy1 = 2*y1 - *cpy2;
+function SVGParser.pathCubicBezShortTo(self, cpx, cpy,cpx2, cpy2, args, rel)
+	local x1 = cpx;
+	local y1 = cpy;
+
+	local cx2 = args[1];
+	local cy2 = args[2];
+	local x2 = args[3];
+	local y2 = args[4];
+
+	if rel then
+		cx2 = cx2 + cpx;
+		cy2 = cy2 + cpy;
+		x2 = x2 + cpx;
+		y2 = y2 + cpy;
+	end
+
+	cx1 = 2*x1 - cpx2;
+	cy1 = 2*y1 - cpy2;
 
 	self:cubicBezTo(p, cx1,cy1, cx2,cy2, x2,y2);
 
-	*cpx2 = cx2;
-	*cpy2 = cy2;
-	*cpx = x2;
-	*cpy = y2;
-}
+	cpx2 = cx2;
+	cpy2 = cy2;
+	cpx = x2;
+	cpy = y2;
 
-function NSVGParser.pathQuadBezTo(self, float* cpx, float* cpy,
+	return cpx, cpy, cpx2, cpy2;
+end
+
+--[[
+function SVGParser.pathQuadBezTo(self, float* cpx, float* cpy,
 								float* cpx2, float* cpy2, float* args, int rel)
 {
 	float x1, y1, x2, y2, cx, cy;
@@ -1746,49 +1761,138 @@ function NSVGParser.pathArcTo(self, float* cpx, float* cpy, float* args, int rel
 --]]
 
 
+function parsePath(input)
+    local out = {};
+
+    for instr, vals in input:gmatch("([a-df-zA-DF-Z])([^a-df-zA-DF-Z]*)") do
+        local line = { instr };
+        for v in vals:gmatch("([+-]?[%deE.]+)") do
+            line[#line+1] = v;
+        end
+        out[#out+1] = line;
+    end
+    return out;
+end
+
 function SVGParser.parsePath(self, attr)
 print("parsePath: ")
-	for k,v in pairs(attr) do
-		print(k,v)
+
+	local s = nil;
+	for name,value in pairs(attr) do
+		if name == "d" then
+			s = value;
+		else
+			self:parseAttribs({[name] = value});
+		end
 	end
---[[
-	const char* s = NULL;
-	char cmd = '\0';
-	float args[10];
-	int nargs;
-	int rargs = 0;
-	float cpx, cpy, cpx2, cpy2;
-	const char* tmp[4];
-	char closedFlag;
-	int i;
-	char item[64];
 
-	for (i = 0; attr[i]; i += 2) {
-		if (strcmp(attr[i], "d") == 0) {
-			s = attr[i + 1];
-		} else {
-			tmp[0] = attr[i];
-			tmp[1] = attr[i + 1];
-			tmp[2] = 0;
-			tmp[3] = 0;
-			self:parseAttribs(p, tmp);
-		}
-	}
-
-	if (s) {
+	if (s) then
 		self:resetPath();
-		cpx = 0; cpy = 0;
-		cpx2 = 0; cpy2 = 0;
-		closedFlag = 0;
-		nargs = 0;
+		local cpx = 0; 
+		local cpy = 0;
+		local cpx2 = 0; 
+		local cpy2 = 0;
+		local closedFlag = false;
+		local nargs = 0;
 
-		while (*s) {
+		local instructions = parsePath(s)
+
+		-- what we have in commands is a table of instructions
+		-- each line has
+		-- instructions[1] == name of instructions
+		-- instructions[2..n] == values for instructions
+		for _, args in ipairs(instructions) do
+			local cmd = args[1];
+			table.remove(args,1);
+
+			-- now, we have the instruction in the 'ins' value
+			-- and the arguments in the cmd table
+			if cmd == "m" or ins == "M" then
+				print("MOVETO:", unpack(args))
+				if #args == 0 then
+					-- Commit path.
+					if (self.npts > 0) then
+						self:addPath(closedFlag);
+					end
+
+					-- Start new subpath.
+					self:resetPath();
+					closedFlag = false;
+					--nargs = 0;
+				else
+					cpx, cpy = self:pathMoveTo(cpx, cpy, args, cmd == 'm');
+					-- Moveto can be followed by multiple coordinate pairs,
+					-- which should be treated as linetos.
+					--		cmd = (cmd == 'm') ? 'l' : 'L';
+                    --       rargs = self:getArgsPerElement(cmd);
+                    --        cpx2 = cpx; cpy2 = cpy;
+				end
+			elseif cmd == "l" or cmd == "L" then
+				print("LINETO: ", unpack(args))
+				cpx, cpy = self:pathLineTo(cpx, cpy, args, cmd == 'l');
+                cpx2 = cpx; 
+                cpy2 = cpy;
+			elseif cmd == "h" or cmd == "H" then
+				print("HLINETO: ", unpack(args))
+				cpx, cpy = self:pathHLineTo(cpx, cpy, args, cmd == 'h');
+                cpx2 = cpx; 
+                cpy2 = cpy;
+			elseif cmd == "v" or cmd == "V" then
+				print("VLINETO: ", unpack(args))
+				cpx, cpy = self:pathVLineTo(cpx, cpy, args, cmd == 'v');
+                cpx2 = cpx; 
+                cpy2 = cpy;
+			elseif cmd == "c" or cmd == "C" then
+				print("CUBICBEZIERTO: ", unpack(args))
+				cpx, cpy, cpx2, cpy2 = self:pathCubicBezTo(cpx, cpy, cpx2, cpy2, args, cmd == 'c');
+			elseif cmd == "s" or cmd == "S" then
+				print("CUBICBEZIERSHORTTO: ", unpack(args))
+				cpx, cpy, cpx2, cpy2 = self:pathCubicBezShortTo(cpx, cpy, cpx2, cpy2, args, cmd == 's');
+			elseif cmd == "q" or cmd == "Q" then
+				print("QUADBEZIERTO: ", unpack(args))
+				cpx, cpy, cpx2, cpy2 = self:pathQuadBezTo(cpx, cpy, cpx2, cpy2, args, cmd == 'q');
+			elseif cmd == "t" or cmd == "T" then
+				print("QUADBEZIERSHORTTO: ", unpack(args))
+				cpx, cpy, cpx2, cpy2 = self:pathQuadBezShortTo(cpx, cpy, cpx2, cpy2, args, cmd == 't');
+
+			elseif cmd == "a" or cmd == "A" then
+				print("ARCTO: ", unpack(args))
+				cpx, cpy = self:pathArcTo(cpx, cpy, args, cmd == 'a');
+                cpx2 = cpx; 
+                cpy2 = cpy;
+			elseif cmd == "z" or cmd == "Z" then
+				closedFlag = true;
+				-- Commit path.
+				if (self.npts > 0) then
+				-- Move current point to first point
+					cpx = self.pts[1].x;
+					cpy = self.pts[1].y;
+					cpx2 = cpx; 
+					cpy2 = cpy;
+					self:addPath(closedFlag);
+				end
+
+				-- Start new subpath.
+				self:resetPath();
+				self:moveTo(cpx, cpy);
+				closedFlag = false;
+				nargs = 0;
+			end
+		end
+
+--[[
+		while (*s) do
 			s = self:getNextPathItem(s, item);
-			if (!*item) break;
-			if (self:isnum(item[0])) {
-				if (nargs < 10)
+			if (!*item) then
+				break;
+			end
+
+			if (self:isnum(item[0])) then
+				if (nargs < 10) then
 					args[nargs++] = (float)atof(item);
-				if (nargs >= rargs) {
+				end
+
+				if (nargs >= rargs) then
 					switch (cmd) {
 						case 'm':
 						case 'M':
@@ -1844,11 +1948,11 @@ print("parsePath: ")
 							break;
 					}
 					nargs = 0;
-				}
-			} else {
+				end
+			else
 				cmd = item[0];
 				rargs = self:getArgsPerElement(cmd);
-				if (cmd == 'M' || cmd == 'm') {
+				if (cmd == 'M' || cmd == 'm') then
 					// Commit path.
 					if (self.npts > 0)
 						self:addPath(p, closedFlag);
@@ -1856,7 +1960,7 @@ print("parsePath: ")
 					self:resetPath();
 					closedFlag = 0;
 					nargs = 0;
-				elseif (cmd == 'Z' || cmd == 'z') {
+				elseif (cmd == 'Z' || cmd == 'z') then
 					closedFlag = 1;
 					// Commit path.
 					if (self.npts > 0) {
@@ -1871,16 +1975,17 @@ print("parsePath: ")
 					self:moveTo(p, cpx, cpy);
 					closedFlag = 0;
 					nargs = 0;
-				}
-			}
-		}
-		// Commit path.
-		if (self.npts)
-			self:addPath(p, closedFlag);
-	}
+				end
+			end
+		end
 --]]
-	self:addShape();
+		-- Commit path.
+		if (self.npts > 0) then
+			self:addPath(closedFlag);
+		end
+	end
 
+	self:addShape();
 end
 
 function SVGParser.parseRect(self, attr)
