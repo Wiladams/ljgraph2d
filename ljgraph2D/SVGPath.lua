@@ -12,6 +12,11 @@ typedef struct NSVGpath
 --]]
 
 local SVGPath = {}
+setmetatable(SVGPath, {
+	__call = function(self, ...)
+		return self:new(...)
+	end,
+	})
 local SVGPath_mt = {
 	__index = SVGPath;
 }

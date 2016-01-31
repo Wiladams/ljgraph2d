@@ -1,3 +1,12 @@
+local ffi = require("ffi")
+
+local SVGTypes = require("ljgraph2D.SVGTypes")
+local SVGPaint = SVGTypes.SVGPaint;
+local LineJoin = SVGTypes.LineJoin;
+local LineCap = SVGTypes.LineCap;
+local FillRule = SVGTypes.FillRule;
+local Flags = SVGTypes.Flags;
+
 --[[
 typedef struct NSVGshape
 {
@@ -19,7 +28,13 @@ typedef struct NSVGshape
 } NSVGshape;
 --]]
 
+
 local SVGShape = {}
+setmetatable(SVGShape, {
+	__call = function(self, ...)
+		return self:new(...)
+	end,
+	})
 local SVGShape_mt = {
 	__index = SVGShape;
 }
@@ -29,8 +44,8 @@ local SVGShape_mt = {
 function SVGShape.init(self, obj)
 	obj = obj or {
 		--id[64];				-- Optional 'id' attr of the shape or its group
-		fill 			= SVGpaint();		-- Fill paint
-		stroke 			= SVGpaint();	-- Stroke paint
+		fill 			= SVGPaint();		-- Fill paint
+		stroke 			= SVGPaint();	-- Stroke paint
 		Opacity 		= 0;			-- Opacity of the shape.
 		strokeWidth		= 1;		-- Stroke width (scaled).
 		strokeDashOffset= 0;		-- Stroke dash offset (scaled).

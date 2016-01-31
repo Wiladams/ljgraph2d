@@ -53,6 +53,7 @@ local SVGImage = require("ljgraph2D.SVGImage")
 
 local function sqr(x)  return x*x; end
 local function vmag(x, y)  return sqrt(x*x + y*y); end
+local sqrt = math.sqrt;
 
 local RGB = colors.RGBA;
 
@@ -615,7 +616,7 @@ function SVGgradient* SVGParser.createGradient(self, id, const float* localBound
 end
 --]]
 
-function SVGParser.getAverageScale(t)
+function SVGParser.getAverageScale(self, t)
 
 	local sx = sqrt(t[0]*t[0] + t[2]*t[2]);
 	local sy = sqrt(t[1]*t[1] + t[3]*t[3]);
@@ -659,12 +660,12 @@ end
 
 
 function SVGParser.addShape(self)
---[[
+
 	local attr = self:getAttr(p);
 	local scale = 1.0;
-	NSVGshape *shape, *cur, *prev;
-	NSVGpath* path;
-	int i;
+--	NSVGshape *shape, *cur, *prev;
+--	NSVGpath* path;
+--	int i;
 
 	if (self.plist == NULL) then
 		return;
@@ -675,14 +676,15 @@ function SVGParser.addShape(self)
 	--if (shape == NULL) goto error;
 	--memset(shape, 0, sizeof(NSVGshape));
 
-	memcpy(shape.id, attr.id, sizeof shape.id);
+--	memcpy(shape.id, attr.id, sizeof shape.id);
 	scale = self:getAverageScale(attr.xform);
 	shape.strokeWidth = attr.strokeWidth * scale;
 	shape.strokeDashOffset = attr.strokeDashOffset * scale;
 	shape.strokeDashCount = attr.strokeDashCount;
+
 	
-	for (i = 0; i < attr.strokeDashCount; i++)
-		shape.strokeDashArray[i] = attr.strokeDashArray[i] * scale;
+--	for (i = 0; i < attr.strokeDashCount; i++)
+--		shape.strokeDashArray[i] = attr.strokeDashArray[i] * scale;
 	
 	shape.strokeLineJoin = attr.strokeLineJoin;
 	shape.strokeLineCap = attr.strokeLineCap;
@@ -692,6 +694,7 @@ function SVGParser.addShape(self)
 	shape.paths = self.plist;
 	self.plist = NULL;
 
+--[[
 	-- Calculate shape bounds
 	shape.bounds[0] = shape.paths.bounds[0];
 	shape.bounds[1] = shape.paths.bounds[1];
@@ -741,22 +744,11 @@ function SVGParser.addShape(self)
 
 	-- Set flags
 	shape.flags = (attr.visible ? NSVG_FLAGS_VISIBLE : 0x00);
+--]]
 
 	-- Add to tail
-	prev = NULL;
-	cur = self.image.shapes;
-	
-	while (cur ~= NULL) do
-		prev = cur;
-		cur = cur.next;
-	end
+	table.insert(self.image.shapes, shape);
 
-	if (prev == NULL) then
-		self.image.shapes = shape;
-	else
-		prev.next = shape;
-	end
---]]
 	return;
 end
 
@@ -764,12 +756,12 @@ end
 
 function SVGParser.addPath(self, closed)
 
---[[
-	NSVGattrib* attr = self:getAttr();
-	NSVGpath* path = NULL;
-	float bounds[4];
-	float* curve;
-	int i;
+
+	local attr = self:getAttr();
+	--NSVGpath* path = NULL;
+	local  bounds = ffi.new("double[4]");
+	--float* curve;
+	--int i;
 
 	if (self.npts < 4) then
 		return;
@@ -783,7 +775,7 @@ function SVGParser.addPath(self, closed)
 	--path = (NSVGpath*)malloc(sizeof(NSVGpath));
 	--if (path == NULL) goto error;
 	--memset(path, 0, sizeof(NSVGpath));
-
+--[[
 	path.pts = (float*)malloc(self.npts*2*sizeof(float));
 	if (path.pts == NULL) goto error;
 	path.closed = closed;
@@ -809,13 +801,13 @@ function SVGParser.addPath(self, closed)
 			path.bounds[3] = self:maxf(path.bounds[3], bounds[3]);
 		}
 	}
+--]]
 
 	table.insert(self.plist, path);
 	--path.next = self.plist;
 	--self.plist = path;
 
 	return;
---]]
 end
 
 
@@ -2574,7 +2566,7 @@ function SVGParser.scaleToViewbox(self, units)
 		end
 
 		shape.strokeWidth = shape.strokeWidth * avgs;
-		shape.strokeDashOffset = shape.storkeDashOffset * avgs;
+		shape.strokeDashOffset = shape.strokeDashOffset * avgs;
 		for i = 0, shape.strokeDashCount-1 do
 			shape.strokeDashArray[i] = shape.strokeDashArray[i] * avgs;
 		end
