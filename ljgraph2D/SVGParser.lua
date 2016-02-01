@@ -416,7 +416,7 @@ end
 
 function SVGParser.resetPath(self)
 	self.npts = 0;
-	--self.pts = {};
+	self.pts = {};
 end
 
 function SVGParser.addPoint(self, x, y)
@@ -663,20 +663,18 @@ end
 
 function SVGParser.addShape(self)
 
-	local attr = self:getAttr(p);
+	local attr = self:getAttr();
 	local scale = 1.0;
 --	NSVGshape *shape, *cur, *prev;
 --	NSVGpath* path;
---	int i;
 
+--print("addShape, plist, attr: ", self.plist, attr)
 	if (self.plist == NULL) then
 		return;
 	end
 
 	local shape = SVGShape();
-	--shape = (NSVGshape*)malloc(sizeof(NSVGshape));
-	--if (shape == NULL) goto error;
-	--memset(shape, 0, sizeof(NSVGshape));
+
 
 --	memcpy(shape.id, attr.id, sizeof shape.id);
 	scale = self:getAverageScale(attr.xform);
@@ -694,15 +692,18 @@ function SVGParser.addShape(self)
 	shape.opacity = attr.opacity;
 
 	shape.paths = self.plist;
+print("plist: ", #self.plist)
 	self.plist = {};
+print("shape.paths: ", #shape.paths, #shape.paths[1].pts)
+print("SVGParser.addShape(), shape.bounds: ", shape.bounds)
 
---[[
 	-- Calculate shape bounds
+--[[
 	shape.bounds[0] = shape.paths.bounds[0];
 	shape.bounds[1] = shape.paths.bounds[1];
 	shape.bounds[2] = shape.paths.bounds[2];
 	shape.bounds[3] = shape.paths.bounds[3];
-	
+
 	for (path = shape.paths.next; path != NULL; path = path.next) {
 		shape.bounds[0] = self:minf(shape.bounds[0], path.bounds[0]);
 		shape.bounds[1] = self:minf(shape.bounds[1], path.bounds[1]);
@@ -757,19 +758,15 @@ end
 
 
 function SVGParser.addPath(self, closed)
-
-
 	local attr = self:getAttr();
 	local  bounds = ffi.new("double[4]");
 	--float* curve;
 	--int i;
 
-	if (self.npts < 4) then
-		return;
-	end
+print("addPath: ", #self.pts)
 
-	if closed then
-		self:lineTo(self.pts[1].x, self.pts[1].y);
+	if (#self.pts < 4) then
+		return;
 	end
 
 	local path = SVGPath();
@@ -781,33 +778,33 @@ function SVGParser.addPath(self, closed)
 	if (path.pts == NULL) goto error;
 --]]
 	path.closed = closed;
-	path.npts = self.npts;
---[[
-	-- Transform path.
-	for (i = 0; i < self.npts; ++i)
-		path.pts[i*2], path.pts[i*2+1] = xform.xformPoint(self.pts[i*2], self.pts[i*2+1], attr.xform);
+	--path.npts = self.npts;
 
+	-- Transform path.
+	--for (i = 0; i < self.npts; ++i)
+	for i, pt in ipairs(self.pts) do
+		pt.x, pt.y = transform2D.xformPoint(pt.x, pt.y, attr.xform);
+	end
+--[[
 	-- Find bounds
-	for (i = 0; i < path.npts-1; i += 3) {
+	for (i = 0; i < path.npts-1; i += 3) do
 		curve = &path.pts[i*2];
 		curveBoundary(bounds, curve);
-		if (i == 0) {
+		if (i == 0) then
 			path.bounds[0] = bounds[0];
 			path.bounds[1] = bounds[1];
 			path.bounds[2] = bounds[2];
 			path.bounds[3] = bounds[3];
-		} else {
-			path.bounds[0] = self:minf(path.bounds[0], bounds[0]);
-			path.bounds[1] = self:minf(path.bounds[1], bounds[1]);
-			path.bounds[2] = self:maxf(path.bounds[2], bounds[2]);
-			path.bounds[3] = self:maxf(path.bounds[3], bounds[3]);
-		}
-	}
+		else
+			path.bounds[0] = minf(path.bounds[0], bounds[0]);
+			path.bounds[1] = minf(path.bounds[1], bounds[1]);
+			path.bounds[2] = maxf(path.bounds[2], bounds[2]);
+			path.bounds[3] = maxf(path.bounds[3], bounds[3]);
+		end
+	end
 --]]
 
 	table.insert(self.plist, path);
-	--path.next = self.plist;
-	--self.plist = path;
 
 	return;
 end
@@ -1243,7 +1240,7 @@ static int self:parseStrokeDashArray(self, const char* str, float* strokeDashArr
 
 
 function SVGParser.parseAttr(self, name, value)
-print("parseAttr: ", name, value);
+--print("parseAttr: ", name, value);
 
 	local xform = ffi.new("double[6]");
 	local attr = self:getAttr(p);
@@ -1732,7 +1729,7 @@ end
 
 
 
-function parsePath(input)
+function parseSVGPath(input)
     local out = {};
 
     for instr, vals in input:gmatch("([a-df-zA-DF-Z])([^a-df-zA-DF-Z]*)") do
@@ -1764,9 +1761,8 @@ print("parsePath: ")
 		local cpx2 = 0; 
 		local cpy2 = 0;
 		local closedFlag = false;
-		local nargs = 0;
 
-		local instructions = parsePath(s)
+		local instructions = parseSVGPath(s)
 
 		-- what we have in commands is a table of instructions
 		-- each line has
@@ -1779,7 +1775,7 @@ print("parsePath: ")
 			-- now, we have the instruction in the 'ins' value
 			-- and the arguments in the cmd table
 			if cmd == "m" or ins == "M" then
-				print("MOVETO:", unpack(args))
+				--print("MOVETO:", unpack(args))
 				if #args == 0 then
 					-- Commit path.
 					if (self.npts > 0) then
@@ -1789,7 +1785,6 @@ print("parsePath: ")
 					-- Start new subpath.
 					self:resetPath();
 					closedFlag = false;
-					--nargs = 0;
 				else
 					cpx, cpy = self:pathMoveTo(cpx, cpy, args, cmd == 'm');
 					-- Moveto can be followed by multiple coordinate pairs,
@@ -1799,35 +1794,35 @@ print("parsePath: ")
                     --        cpx2 = cpx; cpy2 = cpy;
 				end
 			elseif cmd == "l" or cmd == "L" then
-				print("LINETO: ", unpack(args))
+				--print("LINETO: ", unpack(args))
 				cpx, cpy = self:pathLineTo(cpx, cpy, args, cmd == 'l');
                 cpx2 = cpx; 
                 cpy2 = cpy;
 			elseif cmd == "h" or cmd == "H" then
-				print("HLINETO: ", unpack(args))
+				--print("HLINETO: ", unpack(args))
 				cpx, cpy = self:pathHLineTo(cpx, cpy, args, cmd == 'h');
                 cpx2 = cpx; 
                 cpy2 = cpy;
 			elseif cmd == "v" or cmd == "V" then
-				print("VLINETO: ", unpack(args))
+				--print("VLINETO: ", unpack(args))
 				cpx, cpy = self:pathVLineTo(cpx, cpy, args, cmd == 'v');
                 cpx2 = cpx; 
                 cpy2 = cpy;
 			elseif cmd == "c" or cmd == "C" then
-				print("CUBICBEZIERTO: ", unpack(args))
+				--print("CUBICBEZIERTO: ", unpack(args))
 				cpx, cpy, cpx2, cpy2 = self:pathCubicBezTo(cpx, cpy, cpx2, cpy2, args, cmd == 'c');
 			elseif cmd == "s" or cmd == "S" then
-				print("CUBICBEZIERSHORTTO: ", unpack(args))
+				--print("CUBICBEZIERSHORTTO: ", unpack(args))
 				cpx, cpy, cpx2, cpy2 = self:pathCubicBezShortTo(cpx, cpy, cpx2, cpy2, args, cmd == 's');
 			elseif cmd == "q" or cmd == "Q" then
-				print("QUADBEZIERTO: ", unpack(args))
+				--print("QUADBEZIERTO: ", unpack(args))
 				cpx, cpy, cpx2, cpy2 = self:pathQuadBezTo(cpx, cpy, cpx2, cpy2, args, cmd == 'q');
 			elseif cmd == "t" or cmd == "T" then
-				print("QUADBEZIERSHORTTO: ", unpack(args))
+				--print("QUADBEZIERSHORTTO: ", unpack(args))
 				cpx, cpy, cpx2, cpy2 = self:pathQuadBezShortTo(cpx, cpy, cpx2, cpy2, args, cmd == 't');
 
 			elseif cmd == "a" or cmd == "A" then
-				print("ARCTO: ", unpack(args))
+				--print("ARCTO: ", unpack(args))
 				cpx, cpy = self:pathArcTo(cpx, cpy, args, cmd == 'a');
                 cpx2 = cpx; 
                 cpy2 = cpy;
@@ -1847,111 +1842,11 @@ print("parsePath: ")
 				self:resetPath();
 				self:moveTo(cpx, cpy);
 				closedFlag = false;
-				nargs = 0;
 			end
 		end
 
---[[
-		while (*s) do
-			s = self:getNextPathItem(s, item);
-			if (!*item) then
-				break;
-			end
-
-			if (self:isnum(item[0])) then
-				if (nargs < 10) then
-					args[nargs++] = (float)atof(item);
-				end
-
-				if (nargs >= rargs) then
-					switch (cmd) {
-						case 'm':
-						case 'M':
-							self:pathMoveTo(p, &cpx, &cpy, args, cmd == 'm' ? 1 : 0);
-							// Moveto can be followed by multiple coordinate pairs,
-							// which should be treated as linetos.
-							cmd = (cmd == 'm') ? 'l' : 'L';
-                            rargs = self:getArgsPerElement(cmd);
-                            cpx2 = cpx; cpy2 = cpy;
-							break;
-						case 'l':
-						case 'L':
-							self:pathLineTo(p, &cpx, &cpy, args, cmd == 'l' ? 1 : 0);
-                            cpx2 = cpx; cpy2 = cpy;
-							break;
-						case 'H':
-						case 'h':
-							self:pathHLineTo(p, &cpx, &cpy, args, cmd == 'h' ? 1 : 0);
-                            cpx2 = cpx; cpy2 = cpy;
-							break;
-						case 'V':
-						case 'v':
-							self:pathVLineTo(p, &cpx, &cpy, args, cmd == 'v' ? 1 : 0);
-                            cpx2 = cpx; cpy2 = cpy;
-							break;
-						case 'C':
-						case 'c':
-							self:pathCubicBezTo(p, &cpx, &cpy, &cpx2, &cpy2, args, cmd == 'c' ? 1 : 0);
-							break;
-						case 'S':
-						case 's':
-							self:pathCubicBezShortTo(p, &cpx, &cpy, &cpx2, &cpy2, args, cmd == 's' ? 1 : 0);
-							break;
-						case 'Q':
-						case 'q':
-							self:pathQuadBezTo(p, &cpx, &cpy, &cpx2, &cpy2, args, cmd == 'q' ? 1 : 0);
-							break;
-						case 'T':
-						case 't':
-							self:pathQuadBezShortTo(p, &cpx, &cpy, &cpx2, &cpy2, args, cmd == 't' ? 1 : 0);
-							break;
-						case 'A':
-						case 'a':
-							self:pathArcTo(p, &cpx, &cpy, args, cmd == 'a' ? 1 : 0);
-                            cpx2 = cpx; cpy2 = cpy;
-							break;
-						default:
-							if (nargs >= 2) {
-								cpx = args[nargs-2];
-								cpy = args[nargs-1];
-	                            cpx2 = cpx; cpy2 = cpy;
-							}
-							break;
-					}
-					nargs = 0;
-				end
-			else
-				cmd = item[0];
-				rargs = self:getArgsPerElement(cmd);
-				if (cmd == 'M' || cmd == 'm') then
-					// Commit path.
-					if (self.npts > 0)
-						self:addPath(p, closedFlag);
-					// Start new subpath.
-					self:resetPath();
-					closedFlag = 0;
-					nargs = 0;
-				elseif (cmd == 'Z' || cmd == 'z') then
-					closedFlag = 1;
-					// Commit path.
-					if (self.npts > 0) {
-						// Move current point to first point
-						cpx = self.pts[0];
-						cpy = self.pts[1];
-						cpx2 = cpx; cpy2 = cpy;
-						self:addPath(p, closedFlag);
-					}
-					// Start new subpath.
-					self:resetPath();
-					self:moveTo(p, cpx, cpy);
-					closedFlag = 0;
-					nargs = 0;
-				end
-			end
-		end
---]]
 		-- Commit path.
-		if (self.npts > 0) then
+		if (#self.pts > 0) then
 			self:addPath(closedFlag);
 		end
 	end
@@ -2031,7 +1926,6 @@ function SVGParser.parseCircle(self, attr)
 	local cy = 0.0;
 	local r = 0.0;
 
-	--for (i = 0; attr[i]; i += 2) {
 	for name, value in pairs(attr) do
 		if (not self:parseAttr(name, value)) then
 			if name == "cx" then
@@ -2053,9 +1947,9 @@ function SVGParser.parseCircle(self, attr)
 		self:cubicBezTo(cx-r, cy-r*SVG_KAPPA90, cx-r*SVG_KAPPA90, cy-r, cx, cy-r);
 		self:cubicBezTo(cx+r*SVG_KAPPA90, cy-r, cx+r, cy-r*SVG_KAPPA90, cx+r, cy);
 
-		self:addPath(p, 1);
+		self:addPath(true);
 
-		self:addShape(p);
+		self:addShape();
 	end
 end
 
