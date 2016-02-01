@@ -61,6 +61,7 @@ local RGB = colors.RGBA;
 
 local PaintType = SVGTypes.PaintType;
 local FillRule = SVGTypes.FillRule;
+local Flags = SVGTypes.Flags;
 local LineCap = SVGTypes.LineCap;
 local LineJoin = SVGTypes.LineJoin;
 local SVGGradientStop = SVGTypes.SVGGradientStop;
@@ -703,14 +704,16 @@ print("SVGParser.addShape(), shape.bounds: ", shape.bounds)
 	shape.bounds[1] = shape.paths.bounds[1];
 	shape.bounds[2] = shape.paths.bounds[2];
 	shape.bounds[3] = shape.paths.bounds[3];
+--]]
 
-	for (path = shape.paths.next; path != NULL; path = path.next) {
-		shape.bounds[0] = self:minf(shape.bounds[0], path.bounds[0]);
-		shape.bounds[1] = self:minf(shape.bounds[1], path.bounds[1]);
-		shape.bounds[2] = self:maxf(shape.bounds[2], path.bounds[2]);
-		shape.bounds[3] = self:maxf(shape.bounds[3], path.bounds[3]);
-	}
+	for _, path in ipairs(shape.paths) do 
+		shape.bounds[0] = minf(shape.bounds[0], path.bounds[0]);
+		shape.bounds[1] = minf(shape.bounds[1], path.bounds[1]);
+		shape.bounds[2] = maxf(shape.bounds[2], path.bounds[2]);
+		shape.bounds[3] = maxf(shape.bounds[3], path.bounds[3]);
+	end
 
+--[[
 	-- Set fill
 	if (attr.hasFill == 0) {
 		shape.fill.type = NSVG_PAINT_NONE;
@@ -727,12 +730,14 @@ print("SVGParser.addShape(), shape.bounds: ", shape.bounds)
 			shape.fill.type = NSVG_PAINT_NONE;
 		}
 	end
+--]]
 
+--[[
 	-- Set stroke
 	if (attr.hasStroke == 0) then
-		shape.stroke.type = NSVG_PAINT_NONE;
+		shape.stroke.type = PaintType.NONE;
 	elseif (attr.hasStroke == 1) then
-		shape.stroke.type = NSVG_PAINT_COLOR;
+		shape.stroke.type = PaintType.COLOR;
 		shape.stroke.color = attr.strokeColor;
 		shape.stroke.color |= (unsigned int)(attr.strokeOpacity*255) << 24;
 	elseif (attr.hasStroke == 2) then
@@ -741,13 +746,17 @@ print("SVGParser.addShape(), shape.bounds: ", shape.bounds)
 		self:getLocalBounds(localBounds, shape, inv);
 		shape.stroke.gradient = self:createGradient(p, attr.strokeGradient, localBounds, &shape.stroke.type);
 		if (shape.stroke.gradient == NULL) then
-			shape.stroke.type = NSVG_PAINT_NONE;
+			shape.stroke.type = PaintType.NONE;
 		end
 	end
+--]]
 
 	-- Set flags
-	shape.flags = (attr.visible ? NSVG_FLAGS_VISIBLE : 0x00);
---]]
+	if attr.visible ~= 0 then
+		shape.flags = Flags.VISIBLE
+	else
+		shape.flags = 0;
+	end
 
 	-- Add to tail
 	table.insert(self.image.shapes, shape);
@@ -778,12 +787,13 @@ print("addPath: ", #self.pts)
 	if (path.pts == NULL) goto error;
 --]]
 	path.closed = closed;
-	--path.npts = self.npts;
+	path.npts = #self.pts;
 
 	-- Transform path.
 	--for (i = 0; i < self.npts; ++i)
 	for i, pt in ipairs(self.pts) do
 		pt.x, pt.y = transform2D.xformPoint(pt.x, pt.y, attr.xform);
+		table.insert(path.pts, pt);
 	end
 --[[
 	-- Find bounds

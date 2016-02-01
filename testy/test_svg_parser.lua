@@ -17,10 +17,10 @@ for _, shape in ipairs(image.shapes) do
 		print('  ',k,v)
 	end
 
-	--for pidx, path in ipairs(shape.paths) do
-	--	print("  PATHS - ", pidx, path.closed)
-	--	for _,pt in ipairs(path.pts) do
-	--		print("    PT: ", pt.x, pt.y)
-	--	end
-	--end
+	for pidx, path in ipairs(shape.paths) do
+		print("  PATHS - ", pidx, path.closed)
+		for _,pt in ipairs(path.pts) do
+			print("    PT: ", pt.x, pt.y)
+		end
+	end
 end
