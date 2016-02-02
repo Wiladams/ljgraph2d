@@ -36,6 +36,9 @@ function SVGPath.new(self, ...)
 	return self:init(...);
 end
 
+-- Very rudimentary drawing
+-- primarily usable for test 
+-- purposes only
 function SVGPath.draw(self, graphPort)
 	--print("SVGPath.draw: ", #self.pts)
 
@@ -44,6 +47,11 @@ function SVGPath.draw(self, graphPort)
 			graphPort:line(
 			self.pts[i+0].x, self.pts[i+0].y, 
 			self.pts[i+1].x, self.pts[i+1].y);
+		end
+
+		if self.closed then
+			graphPort:line(self.pts[#self.pts].x, self.pts[#self.pts].y, 
+				self.pts[1].x, self.pts[1].y);
 		end
 	end
 end

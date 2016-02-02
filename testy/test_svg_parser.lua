@@ -14,27 +14,16 @@ print("Image: ", image)
 
 
 --
-local width = 1024;
-local graphPort = Raster2D(1024,768);
+local width = 1900;
+local height = 1280;
+
+local graphPort = Raster2D(width,height);
 utils.drawCheckerboard (graphPort.surface, 8, colors.svg.lightgray, colors.svg.white)
 
 --print("  shapes: ", image.shapes, #image.shapes)
 
 for _, shape in ipairs(image.shapes) do
-	--print("SHAPE")
-	--for k,v in pairs(shape) do
-	--	print('  ',k,v)
-	--end
-
-	for pidx, path in ipairs(shape.paths) do
-		path:draw(graphPort);
---[[		
-		print("  PATHS - ", pidx, path.closed)
-		for _,pt in ipairs(path.pts) do
-			print("    PT: ", pt.x, pt.y)
-		end
---]]
-	end
+	shape:draw(graphPort)
 end
 
 utils.save(graphPort.surface, "test_svg_parser.bmp");

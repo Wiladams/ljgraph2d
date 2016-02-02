@@ -924,8 +924,10 @@ end
 
 
 function SVGParser.parseColorRGB(self, str)
+	local percentvaluepatt = "(%d+%%),(%d+%%),(%d+%%)"
+	local valuepatt = "(%d+)%s*,%s*(%d+)%s*,%s*(%d+)"
 
-	local r,g,b = str:match("(%d+),(%d+),(%d+)")
+	local r,g,b = str:match(valuepatt)
 	r,g,b = tonumber(r), tonumber(g), tonumber(b)
 
 --print("parseColorRGB: ", str, r, g, b)
@@ -1685,10 +1687,11 @@ function SVGParser.pathArcTo(self, cpx, cpy, args, rel)
 		ptanx = tanx;
 		ptany = tany;
 	}
---]]
+
 	cpx = x2;
 	cpy = y2;
-	
+--]]
+
 	return cpx, cpy;
 end
 
@@ -1922,37 +1925,35 @@ end
 
 
 function SVGParser.parseEllipse(self, attr)
---[[
-	float cx = 0.0f;
-	float cy = 0.0f;
-	float rx = 0.0f;
-	float ry = 0.0f;
-	int i;
 
-	for (i = 0; attr[i]; i += 2) {
-		if (!self:parseAttr(p, attr[i], attr[i + 1])) {
-			if (strcmp(attr[i], "cx") == 0) cx = self:parseCoordinate(p, attr[i+1], self:actualOrigX(p), self:actualWidth(p));
-			if (strcmp(attr[i], "cy") == 0) cy = self:parseCoordinate(p, attr[i+1], self:actualOrigY(p), self:actualHeight(p));
-			if (strcmp(attr[i], "rx") == 0) rx = fabsf(self:parseCoordinate(p, attr[i+1], 0.0f, self:actualWidth(p)));
-			if (strcmp(attr[i], "ry") == 0) ry = fabsf(self:parseCoordinate(p, attr[i+1], 0.0f, self:actualHeight(p)));
-		}
-	}
+	local cx = 0.0;
+	local cy = 0.0;
+	local rx = 0.0;
+	local ry = 0.0;
 
-	if (rx > 0.0f && ry > 0.0f) {
+	for name, value in pairs(attr) do
+		if (not self:parseAttr(name, value)) then
+			if name == "cx" then cx = self:parseCoordinate(value, self:actualOrigX(), self:actualWidth());
+			elseif name == "cy" then cy = self:parseCoordinate(value, self:actualOrigY(), self:actualHeight());
+			elseif name == "rx" then rx = fabs(self:parseCoordinate(value, 0.0, self:actualWidth()));
+			elseif name == "ry" then ry = fabs(self:parseCoordinate(value, 0.0, self:actualHeight()));
+			end
+		end
+	end
 
+	if (rx > 0.0 and ry > 0.0) then
 		self:resetPath();
 
-		self:moveTo(p, cx+rx, cy);
-		self:cubicBezTo(p, cx+rx, cy+ry*NSVG_KAPPA90, cx+rx*NSVG_KAPPA90, cy+ry, cx, cy+ry);
-		self:cubicBezTo(p, cx-rx*NSVG_KAPPA90, cy+ry, cx-rx, cy+ry*NSVG_KAPPA90, cx-rx, cy);
-		self:cubicBezTo(p, cx-rx, cy-ry*NSVG_KAPPA90, cx-rx*NSVG_KAPPA90, cy-ry, cx, cy-ry);
-		self:cubicBezTo(p, cx+rx*NSVG_KAPPA90, cy-ry, cx+rx, cy-ry*NSVG_KAPPA90, cx+rx, cy);
+		self:moveTo(cx+rx, cy);
+		self:cubicBezTo(cx+rx, cy+ry*SVG_KAPPA90, cx+rx*SVG_KAPPA90, cy+ry, cx, cy+ry);
+		self:cubicBezTo(cx-rx*SVG_KAPPA90, cy+ry, cx-rx, cy+ry*SVG_KAPPA90, cx-rx, cy);
+		self:cubicBezTo(cx-rx, cy-ry*SVG_KAPPA90, cx-rx*SVG_KAPPA90, cy-ry, cx, cy-ry);
+		self:cubicBezTo(p, cx+rx*SVG_KAPPA90, cy-ry, cx+rx, cy-ry*SVG_KAPPA90, cx+rx, cy);
 
-		self:addPath(p, 1);
+		self:addPath(true);
 
-		self:addShape(p);
-	}
---]]
+		self:addShape();
+	end
 end
 
 function SVGParser.parseLine(self, attr)
@@ -1982,35 +1983,23 @@ end
 
 
 function SVGParser.parsePoly(self, attr, closeFlag)
-
-	--int i;
-	--const char* s;
-	--float args[2];
-	--int nargs, npts = 0;
-	--char item[64];
-
 	self:resetPath();
 
-	--for (i = 0; attr[i]; i += 2) {
 	for name, value in pairs(attr) do
 		if (not self:parseAttr(name, value)) then
 			if name == "points" then
---[[
-				s = value;
-				nargs = 0;
-				while (*s) {
-					s = self:getNextPathItem(s, item);
-					args[nargs++] = (float)atof(item);
-					if (nargs >= 2) {
-						if (npts == 0)
-							self:moveTo(p, args[0], args[1]);
+				local firstone = true;
+				for coords in string.gmatch(value, "([^ ]+)") do
+					x, y = coords:match("([^,]+),(.*)")
+					if x and y then
+						if firstone then
+							self:moveTo(tonumber(x), tonumber(y));
+							firstone = not firstone;
 						else
-							self:lineTo(p, args[0], args[1]);
-						nargs = 0;
-						npts++;
-					}
-				}
---]]
+							self:lineTo(tonumber(x), tonumber(y));
+						end
+					end
+				end
 			end
 		end
 	end

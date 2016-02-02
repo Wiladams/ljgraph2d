@@ -141,8 +141,8 @@ function Raster2D.init(self, width, height, data)
 		width = width;
 		height = height;
 
-		strokeColor = colors.black;
-		fillColor = colors.white;
+		StrokeColor = colors.black;
+		FillColor = colors.white;
 
 		rowsize = rowsize;
 		pixelarraysize = pixelarraysize;
@@ -178,8 +178,28 @@ function Raster2D.clearToWhite(self)
 	self.surface:clearToWhite();
 end
 
+-- Drawing Style
+function Raster2D.strokeColor(self, value)
+	if value then
+		self.StrokeColor = value;
+		return self;
+	end
+
+	return self.StrokeColor;
+end
+
+function Raster2D.fillColor(self, value)
+	if value then 
+		self.FillColor = value;
+		return self;
+	end
+
+	return self.FillColor;
+end
+
 -- Rectangle drawing
 function Raster2D.fillRect(self, x, y, width, height, value)
+	value = value or self.FillColor;
 	local length = width;
 
 	-- fill the span buffer with the specified
@@ -196,6 +216,7 @@ function Raster2D.fillRect(self, x, y, width, height, value)
 end
 
 function Raster2D.frameRect(self, x, y, width, height, value)
+	value = value or self.StrokeColor;
 	-- two horizontals
 	self:hline(x, y, width, value);
 	self:hline(x, y+height-1, width, value);
@@ -207,6 +228,7 @@ end
 
 -- Text Drawing
 function Raster2D.fillText(self, x, y, text, font, value)
+	value = value or self.FillColor;
 	font:scan_str(rself.surface, x, y, text, value)
 end
 
@@ -217,7 +239,7 @@ end
 
 -- Arbitrary line using Bresenham
 function Raster2D.line(self, x1, y1, x2, y2, value)
-	value = value or self.strokeColor;
+	value = value or self.StrokeColor;
 
 	x1 = floor(x1);
 	y1 = floor(y1);
@@ -274,10 +296,12 @@ end
 
 -- Optimized vertical lines
 function Raster2D.vline(self, x, y, length, value)
+	value = value or self.StrokeColor;
 	self.surface:vline(x, y, length, value);
 end
 
 function Raster2D.hline(self, x, y, length, value)
+	value = value or self.StrokeColor;
 	self.surface:hline(x, y, length, value);
 end
 
@@ -285,6 +309,7 @@ function Raster2D.hspan(self, x, y, length, span)
 	self.surface:hspan(x, y, length, span)
 end
 
+--[[
 function Raster2D.cubicBezier(self, x1, y1, x2,y2, x3, y3, x4, y4, value)
 	value = value or self.strokeColor;
 
@@ -292,5 +317,6 @@ function Raster2D.cubicBezier(self, x1, y1, x2,y2, x3, y3, x4, y4, value)
 	self:line(x2,y2,  x3,y3, value);
 	self:line(x3,y3,  x4, y4, value);
 end
+--]]
 
 return Raster2D

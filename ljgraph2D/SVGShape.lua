@@ -69,4 +69,19 @@ function SVGShape.new(self, params)
 	return self:init(params);
 end
 
+function SVGShape.draw(self, graphPort)
+	-- set style
+	if self.stroke.color then
+		graphPort:strokeColor(self.stroke.color);
+	end
+
+	if self.fill.color then
+		graphPort:fillColor(self.stroke.color);
+	end
+
+	for pidx, path in ipairs(self.paths) do
+		path:draw(graphPort);
+	end
+end
+
 return SVGShape;
