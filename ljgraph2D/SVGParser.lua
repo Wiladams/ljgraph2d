@@ -38,11 +38,16 @@
 --]]
 
 local ffi = require("ffi")
+local bit = require("bit")
+local lshift, rshift, band, bor = bit.lshift, bit.rshift, bit.band, bit.bor
 
 local XmlParser = require("ljgraph2D.SVGXmlParser")
 local transform2D = require("ljgraph2D.transform2D")
 local Bezier = require("ljgraph2D.Bezier")
 local colors = require("ljgraph2D.colors")
+local ctypes = require("ljgraph2D.ctypes")
+local isspace = ctypes.isspace;
+
 local maths = require("ljgraph2D.maths")
 local clamp = maths.clamp;
 
@@ -123,32 +128,41 @@ typedef struct SVGCoordinate {
 ]]
 local SVGCoordinate = ffi.typeof("struct SVGCoordinate");
 
---[[
-typedef struct NSVGlinearData {
-	NSVGcoordinate x1, y1, x2, y2;
-} NSVGlinearData;
+ffi.cdef[[
+typedef struct SVGLinearData {
+	struct SVGCoordinate x1, y1, x2, y2;
+} SVGLinearData_t;
+]]
+local SVGLinearData = ffi.typeof("struct SVGLinearData")
 
-typedef struct NSVGradialData {
-	NSVGcoordinate cx, cy, r, fx, fy;
-} NSVGradialData;
 
-typedef struct NSVGgradientData
+ffi.cdef[[
+typedef struct SVGRadialData {
+	struct SVGCoordinate cx, cy, r, fx, fy;
+} SVGRadialData_t;
+]]
+local SVGRadialData = ffi.typeof("struct SVGRadialData")
+
+
+ffi.cdef[[
+typedef struct SVGGradientData
 {
 	char id[64];
 	char ref[64];
 	char type;
 	union {
-		NSVGlinearData linear;
-		NSVGradialData radial;
+		struct SVGLinearData linear;
+		struct SVGRadialData radial;
 	};
 	char spread;
 	char units;
-	float xform[6];
+	double xform[6];
 	int nstops;
-	NSVGgradientStop* stops;
-	struct NSVGgradientData* next;
-} NSVGgradientData;
---]]
+	struct SVGGradientStop* stops;
+	struct SVGGradientData* next;
+} SVGGradientData_t;
+]]
+local SVGGradientData = ffi.typeof("struct SVGGradientData")
 
 ffi.cdef[[
 static const int SVG_MAX_DASHES = 8;
@@ -506,8 +520,8 @@ function SVGParser.convertToPixels(self, c, orig, length)
 	elseif c.units == SVGUnits.MM then			return c.value / 25.4 * self.dpi;
 	elseif c.units == SVGUnits.CM then			return c.value / 2.54 * self.dpi;
 	elseif c.units == SVGUnits.IN then			return c.value * self.dpi;
---	elseif c.units == SVGUnits.EM then			return c.value * attr.fontSize;
---	elseif c.units == SVGUnits.EX then			return c.value * attr.fontSize * 0.52; -- x-height of Helvetica.
+	elseif c.units == SVGUnits.EM then			return c.value * attr.fontSize;
+	elseif c.units == SVGUnits.EX then			return c.value * attr.fontSize * 0.52; -- x-height of Helvetica.
 	elseif c.units == SVGUnits.PERCENT then	
 		return orig + c.value / 100.0 * length; 
 	end
@@ -529,22 +543,23 @@ function SVGParser.findGradientData(self, id)
 --]]
 end
 
---[[
-function SVGgradient* SVGParser.createGradient(self, id, const float* localBounds, char* paintType)
 
-	NSVGattrib* attr = self:getAttr(p);
-	NSVGgradientData* data = NULL;
-	NSVGgradientData* ref = NULL;
-	NSVGgradientStop* stops = NULL;
-	NSVGgradient* grad;
+function SVGParser.createGradient(self, id, localBounds, paintType)
+
+	local attr = self:getAttr();
+	--NSVGgradientData* data = NULL;
+	--NSVGgradientData* ref = NULL;
+	--NSVGgradientStop* stops = NULL;
+	--NSVGgradient* grad;
 	local ox, oy, sw, sh, sl= 0,0,0,0,0;
 	local nstops = 0;
 
 	local data = self:findGradientData(id);
-	if data == NULL then
-		return NULL;
+	if data == nil then
+		return nil;
 	end
 
+--[[
 	-- TODO: use ref to fill in all unset values too.
 	local ref = data;
 	while (ref ~= NULL) do
@@ -613,11 +628,11 @@ function SVGgradient* SVGParser.createGradient(self, id, const float* localBound
 	ffi.copy(grad.stops, stops, nstops*sizeof(NSVGgradientStop));
 	grad.nstops = nstops;
 
-	*paintType = data.type;
 
 	return grad, data.type;
-end
 --]]
+end
+
 
 function SVGParser.getAverageScale(self, t)
 
@@ -693,10 +708,7 @@ function SVGParser.addShape(self)
 	shape.opacity = attr.opacity;
 
 	shape.paths = self.plist;
-print("plist: ", #self.plist)
 	self.plist = {};
-print("shape.paths: ", #shape.paths, #shape.paths[1].pts)
-print("SVGParser.addShape(), shape.bounds: ", shape.bounds)
 
 	-- Calculate shape bounds
 --[[
@@ -706,7 +718,7 @@ print("SVGParser.addShape(), shape.bounds: ", shape.bounds)
 	shape.bounds[3] = shape.paths.bounds[3];
 --]]
 
-	for _, path in ipairs(shape.paths) do 
+	for idx, path in ipairs(shape.paths) do 
 		shape.bounds[0] = minf(shape.bounds[0], path.bounds[0]);
 		shape.bounds[1] = minf(shape.bounds[1], path.bounds[1]);
 		shape.bounds[2] = maxf(shape.bounds[2], path.bounds[2]);
@@ -725,31 +737,33 @@ print("SVGParser.addShape(), shape.bounds: ", shape.bounds)
 		float inv[6], localBounds[4];
 		xform.xformInverse(inv, attr.xform);
 		self:getLocalBounds(localBounds, shape, inv);
-		shape.fill.gradient = self:createGradient(p, attr.fillGradient, localBounds, &shape.fill.type);
+		shape.fill.gradient,  shape.fill.type = self:createGradient(attr.fillGradient, localBounds);
 		if (shape.fill.gradient == NULL) {
 			shape.fill.type = NSVG_PAINT_NONE;
 		}
 	end
 --]]
 
---[[
+
 	-- Set stroke
 	if (attr.hasStroke == 0) then
 		shape.stroke.type = PaintType.NONE;
 	elseif (attr.hasStroke == 1) then
 		shape.stroke.type = PaintType.COLOR;
 		shape.stroke.color = attr.strokeColor;
-		shape.stroke.color |= (unsigned int)(attr.strokeOpacity*255) << 24;
+		shape.stroke.color = bor(shape.stroke.color, lshift((attr.strokeOpacity*255), 24));
 	elseif (attr.hasStroke == 2) then
-		float inv[6], localBounds[4];
-		xform.xformInverse(inv, attr.xform);
+		local inv = ffi.new("double[6]")
+		local localBounds = ffi.new("double[4]");
+
+		transform2D.xformInverse(inv, attr.xform);
 		self:getLocalBounds(localBounds, shape, inv);
-		shape.stroke.gradient = self:createGradient(p, attr.strokeGradient, localBounds, &shape.stroke.type);
+		shape.stroke.gradient, shape.stroke.type = self:createGradient(attr.strokeGradient, localBounds);
 		if (shape.stroke.gradient == NULL) then
 			shape.stroke.type = PaintType.NONE;
 		end
 	end
---]]
+
 
 	-- Set flags
 	if attr.visible ~= 0 then
@@ -772,7 +786,7 @@ function SVGParser.addPath(self, closed)
 	--float* curve;
 	--int i;
 
-print("addPath: ", #self.pts)
+--print("addPath: ", #self.pts)
 
 	if (#self.pts < 4) then
 		return;
@@ -908,10 +922,15 @@ static unsigned int self:parseColorHex(self, const char* str)
 end
 --]]
 
---[[
-local function self:parseColorRGB(self, const char* str)
 
-	int r = -1, g = -1, b = -1;
+function SVGParser.parseColorRGB(self, str)
+
+	local r,g,b = str:match("(%d+),(%d+),(%d+)")
+	r,g,b = tonumber(r), tonumber(g), tonumber(b)
+
+--print("parseColorRGB: ", str, r, g, b)
+
+--[[	
 	char s1[32]="", s2[32]="";
 	sscanf(str + 4, "%d%[%%, \t]%d%[%%, \t]%d", &r, s1, &g, s2, &b);
 	if (strchr(s1, '%')) {
@@ -919,8 +938,11 @@ local function self:parseColorRGB(self, const char* str)
 	else 
 		return RGB(r,g,b);
 	end
-end
 --]]
+
+	return RGB(r,g,b)
+end
+
 
 function SVGParser.parseColorName(self, name)
 	return colors.svg[name] or RGB(128, 128, 128);
@@ -928,7 +950,7 @@ end
 
 
 function SVGParser.parseColor(self, s)
-	-- skip whitespace
+	--print("SVGParser.parseColor: ", s)
 	local str = s:match("%s*(.*)")
 
 	local len = #str;
@@ -1250,7 +1272,7 @@ static int self:parseStrokeDashArray(self, const char* str, float* strokeDashArr
 
 
 function SVGParser.parseAttr(self, name, value)
---print("parseAttr: ", name, value);
+	--print("parseAttr: ", name, value);
 
 	local xform = ffi.new("double[6]");
 	local attr = self:getAttr(p);
@@ -1324,80 +1346,14 @@ function SVGParser.parseAttr(self, name, value)
 	return true;
 end
 
-
-function SVGParser.parseNameValue(self, start, ending)
-	local str = start;
-	while (str < ending and str[0] ~= string.byte(':')) do
-		str = str + 1;
-	end
-
-	local val = str;
-
-	-- Right Trim
-	while (str > start and  (str[0] == string.byte(':') or isspace(str[0]))) do
-		str = str - 1;
-	end
-
-	str = str + 1;
-
-	local n = (str - start);
-	if (n > 511) then
-		n = 511;
-	end
-
-	if (n > 0) then
-		name = ffi.string(start, n);
-	end
-
-	while (val < ending and (val[0] == string.byte(':') or isspace(val[0]))) do
-		val = val + 1;
-	end
-
-	n = ending - val;
-	if n > 511 then 
-		n = 511;
-	end
-
-	if n>0 then 
-		value = ffi.string(val, n);
-	end
-
-	return self:parseAttr(name, value);
-end
-
-
-
 function SVGParser.parseStyle(self, s)
-	print("parseStyle: ", s)
+	--print("parseStyle: ", s)
 
-	local str = ffi.cast("const char *", s)
-
-	while (str[0] ~= 0) do
-		-- Left Trim
-		while(str[0]~=0 and isspace(str[0])) do
-			str = str + 1; 
-		end
-
-		local start = str;
-		while (str[0]~= 0 and str[0] ~= string.byte(';')) do
-			str = str + 1; 
-		end
-
-		local ending = str;
-
-		-- Right Trim
-		while (ending > start and  (ending[0] == string.byte(';') or isspace(ending[0]))) do
-			ending = ending - 1;
-		end
-
-		ending = ending + 1;
-
-		self:parseNameValue(start, ending);
-		if (str[0] ~= 0) then
-			str = str + 1;
-		end
+	-- match everything but the delimeter
+	for word in string.gmatch(s, "([^;]+)") do
+		name, value = word:match("([^:]+):(.*)")
+		self:parseAttr(name, value)
 	end
-
 end
 
 function SVGParser.parseAttribs(self, attr)
@@ -1753,7 +1709,7 @@ function parseSVGPath(input)
 end
 
 function SVGParser.parsePath(self, attr)
-print("parsePath: ")
+--print("parsePath: ")
 
 	local s = nil;
 	for name,value in pairs(attr) do
@@ -2002,16 +1958,17 @@ end
 function SVGParser.parseLine(self, attr)
 
 	local x1, y1, x2, y2 = 0, 0, 0, 0;
---[[
-	for (i = 0; attr[i]; i += 2) {
-		if (!self:parseAttr(p, attr[i], attr[i + 1])) {
-			if (strcmp(attr[i], "x1") == 0) x1 = self:parseCoordinate(p, attr[i + 1], self:actualOrigX(p), self:actualWidth(p));
-			if (strcmp(attr[i], "y1") == 0) y1 = self:parseCoordinate(p, attr[i + 1], self:actualOrigY(p), self:actualHeight(p));
-			if (strcmp(attr[i], "x2") == 0) x2 = self:parseCoordinate(p, attr[i + 1], self:actualOrigX(p), self:actualWidth(p));
-			if (strcmp(attr[i], "y2") == 0) y2 = self:parseCoordinate(p, attr[i + 1], self:actualOrigY(p), self:actualHeight(p));
-		}
-	}
---]]
+
+	for name, value in pairs(attr) do
+		if (not self:parseAttr(name, value)) then
+			if name == "x1" then x1 = self:parseCoordinate(value, self:actualOrigX(), self:actualWidth());
+				elseif name == "y1" then y1 = self:parseCoordinate(value, self:actualOrigY(), self:actualHeight());
+				elseif name == "x2" then x2 = self:parseCoordinate(value, self:actualOrigX(), self:actualWidth());
+				elseif name == "y2" then y2 = self:parseCoordinate(value, self:actualOrigY(), self:actualHeight());
+			end
+		end
+	end
+
 	self:resetPath();
 
 	self:moveTo(x1, y1);
@@ -2236,7 +2193,7 @@ function NSVGParser.parseGradientStop(self, const char** attr)
 
 
 function SVGParser.startElement(self, el, attr)
-	print("SVGParser.startElement: ", el, attr)
+	--print("SVGParser.startElement: ", el, attr)
 
 	if (self.defsFlag) then
 		-- Skip everything but gradients in defs

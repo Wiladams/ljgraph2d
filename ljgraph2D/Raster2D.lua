@@ -16,7 +16,9 @@ local floor = math.floor;
 local maths = require("ljgraph2D.maths")
 local sgn = maths.sgn;
 local round = maths.round;
+local clamp = maths.clamp;
 
+local colors = require("ljgraph2D.colors")
 local Surface = require("ljgraph2D.Surface")
 local DrawingContext = require("ljgraph2D.DrawingContext")
 local SVGTypes = require("ljgraph2D.SVGTypes")
@@ -118,9 +120,7 @@ local function fillActiveEdges(scanline, len, edges, maxWeight, xmin, xmax, fill
 end
 
 
-local Raster2D = {
-	
-}
+local Raster2D = {}
 setmetatable(Raster2D, {
 	__call = function(self, ...)
 		return self:new(...)
@@ -133,8 +133,6 @@ local Raster2D_mt = {
 
 
 function Raster2D.init(self, width, height, data)
-	--rowsize = GetAlignedByteCount(width, bitcount, alignment);
-    --pixelarraysize = rowsize * math.abs(height);
     local surf = Surface(width, height, data);
 
 	local obj = {
@@ -142,6 +140,9 @@ function Raster2D.init(self, width, height, data)
 		Context = DrawingContext(width, height);
 		width = width;
 		height = height;
+
+		strokeColor = colors.black;
+		fillColor = colors.white;
 
 		rowsize = rowsize;
 		pixelarraysize = pixelarraysize;
@@ -159,7 +160,7 @@ function Raster2D.init(self, width, height, data)
 		--points = {};
 
 	}
-	setmetatable(obj, DrawingContext_mt)
+	setmetatable(obj, Raster2D_mt)
 
 	return obj;
 end
@@ -216,10 +217,19 @@ end
 
 -- Arbitrary line using Bresenham
 function Raster2D.line(self, x1, y1, x2, y2, value)
+	value = value or self.strokeColor;
+
 	x1 = floor(x1);
 	y1 = floor(y1);
 	x2 = floor(x2);
 	y2 = floor(y2);
+
+	x1 = clamp(x1, 0, self.width);
+	x2 = clamp(x2, 0, self.width);
+	y1 = clamp(y1, 0, self.height);
+	y2 = clamp(y2, 0, self.height);
+
+	--print("line: ", x1, y1, x2, y2)
 
 	local dx = x2 - x1;      -- the horizontal distance of the line
 	local dy = y2 - y1;      -- the vertical distance of the line
@@ -275,5 +285,12 @@ function Raster2D.hspan(self, x, y, length, span)
 	self.surface:hspan(x, y, length, span)
 end
 
+function Raster2D.cubicBezier(self, x1, y1, x2,y2, x3, y3, x4, y4, value)
+	value = value or self.strokeColor;
+
+	self:line(x1, y1, x2,y2, value);
+	self:line(x2,y2,  x3,y3, value);
+	self:line(x3,y3,  x4, y4, value);
+end
 
 return Raster2D

@@ -10,7 +10,7 @@ local clamp = maths.clamp
 -- they should take care of this difference
 local function RGBA(r, g, b, a)
 	a = a or 255;
-	return bor(lshift(a,24), lshift(r,16), lshift(g,8), b)
+	return bor(lshift(tonumber(a),24), lshift(tonumber(r),16), lshift(tonumber(g),8), tonumber(b))
 end
 
 local function colorComponents(c)

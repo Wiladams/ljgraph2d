@@ -14,7 +14,7 @@ local function isdigit(c)
 end
 
 local function isnum(c)
-	return nsvg__isdigit(c) or
+	return isdigit(c) or
 		c == string.byte('+') or
 		c == string.byte('-') or
 		c == string.byte('e') or
