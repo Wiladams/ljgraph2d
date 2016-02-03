@@ -60,6 +60,13 @@ end
 
 function SVGPath.dump(self)
 	print("SVGPath.dump")
+	print("-- BOUNDS --")
+	for i=0,3 do
+		io.write(" ",self.bounds[i])
+	end
+	print();
+	
+	print("-- POINTS --")
 	for _, pt in ipairs(self.pts) do
 		print(pt.x, pt.y)
 	end

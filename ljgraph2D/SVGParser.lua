@@ -64,7 +64,7 @@ local function sqr(x)  return x*x; end
 local function vmag(x, y)  return sqrt(x*x + y*y); end
 local sqrt = math.sqrt;
 local fabs = math.abs;
-
+local abs = math.abs;
 
 local RGB = colors.RGBA;
 
@@ -117,11 +117,26 @@ local SVGUnits = {
 	EX = 9,
 };
 
+--[[
 ffi.cdef[[
 typedef struct pt2D {
 	double x, y;
 } pt2D_t
+--]]
+ffi.cdef[[
+typedef struct pt2D
+{
+	union {
+		struct {
+			double x, y;
+		};
+		double v[2];
+	};
+} pt2D_t;
 ]]
+
+
+
 local pt2D = ffi.typeof("struct pt2D");
 
 ffi.cdef[[
@@ -273,27 +288,31 @@ end
 	bounds[3] == bottom
 --]]
 local function ptInBounds(pt, bounds)
-	return pt[0] >= bounds[0] and 
-		pt[0] <= bounds[2] and 
-		pt[1] >= bounds[1] and
-		pt[1] <= bounds[3];
+	return pt.x >= bounds[0] and 
+		pt.x <= bounds[2] and 
+		pt.y >= bounds[1] and
+		pt.y <= bounds[3];
 end
 
 
-local function curveBoundary(bounds, curve)
---[[
-	int i, j, count;
-	double roots[2], a, b, c, b2ac, t, v;
-	float* v0 = &curve[0];
-	float* v1 = &curve[2];
-	float* v2 = &curve[4];
-	float* v3 = &curve[6];
+local function curveBoundary(bounds, curve, idx)
+print("curveBoundary: ", #curve, idx)
+	local i, j, count = 0,0,0;
+	local roots = ffi.new("double[2]");
+	local a, b, c, b2ac, t, v = 0,0,0,0,0,0;
+
+
+	local v0 = curve[idx];
+	local v1 = curve[idx+1];
+	local v2 = curve[idx+2];
+	local v3 = curve[idx+3];
 
 	-- Start the bounding box by end points
-	bounds[0] = minf(v0[0], v3[0]);
-	bounds[1] = minf(v0[1], v3[1]);
-	bounds[2] = maxf(v0[0], v3[0]);
-	bounds[3] = maxf(v0[1], v3[1]);
+	bounds[0] = minf(v0.x, v3.x);
+	bounds[1] = minf(v0.y, v3.y);
+	bounds[2] = maxf(v0.x, v3.x);
+	bounds[3] = maxf(v0.y, v3.y);
+
 
 	-- Bezier curve fits inside the convex hull of it's control points.
 	-- If control points are inside the bounds, we're done.
@@ -302,11 +321,13 @@ local function curveBoundary(bounds, curve)
 	end
 
 	-- Add bezier curve inflection points in X and Y.
-	for (i = 0; i < 2; i++) {
-		a = -3.0 * v0[i] + 9.0 * v1[i] - 9.0 * v2[i] + 3.0 * v3[i];
-		b = 6.0 * v0[i] - 12.0 * v1[i] + 6.0 * v2[i];
-		c = 3.0 * v1[i] - 3.0 * v0[i];
-		count = 0;
+
+	for i = 0, 1 do
+		a = -3.0 * v0.v[i] + 9.0 * v1.v[i] - 9.0 * v2.v[i] + 3.0 * v3.v[i];
+		b = 6.0 * v0.v[i] - 12.0 * v1.v[i] + 6.0 * v2.v[i];
+		c = 3.0 * v1.v[i] - 3.0 * v0.v[i];
+
+		local count = 0;
 		if (abs(a) < SVG_EPSILON) then
 			if (abs(b) > SVG_EPSILON) then
 				t = -c / b;
@@ -314,7 +335,7 @@ local function curveBoundary(bounds, curve)
 					roots[count] = t;
 					count = count + 1;
 				end
-			}
+			end
 		else
 			b2ac = b*b - 4.0*c*a;
 			if (b2ac > SVG_EPSILON) then
@@ -331,14 +352,15 @@ local function curveBoundary(bounds, curve)
 				end
 			end
 		end
-
+--[[
 		for (j = 0; j < count; j++) {
 			v = Bezier.evalBezier(roots[j], v0[i], v1[i], v2[i], v3[i]);
 			bounds[0+i] = minf(bounds[0+i], v);
 			bounds[2+i] = maxf(bounds[2+i], v);
 		}
-	}
 --]]
+	end
+
 end
 
 
@@ -818,12 +840,12 @@ function SVGParser.addPath(self, closed)
 		pt.x, pt.y = transform2D.xformPoint(pt.x, pt.y, attr.xform);
 		table.insert(path.pts, pt);
 	end
---[[
+
 	-- Find bounds
-	for (i = 0; i < path.npts-1; i += 3) do
-		curve = &path.pts[i*2];
-		curveBoundary(bounds, curve);
-		if (i == 0) then
+	for i = 1, #path.pts-1, 3 do
+		--curve = &path.pts[i*2];
+		curveBoundary(bounds, path.pts, i);
+		if (i == 1) then
 			path.bounds[0] = bounds[0];
 			path.bounds[1] = bounds[1];
 			path.bounds[2] = bounds[2];
@@ -835,8 +857,8 @@ function SVGParser.addPath(self, closed)
 			path.bounds[3] = maxf(path.bounds[3], bounds[3]);
 		end
 	end
---]]
 
+	--path:dump();
 	table.insert(self.plist, path);
 
 	return;

@@ -9,13 +9,13 @@ local utils = require("utils")
 
 --local parser = SVGParser();
 local filename = arg[1] or "images/08_01.svg"
-local image = SVGParser:parseFromFile(filename, "dpi", 96);
+local image = SVGParser:parseFromFile(filename, "px", 96);
 print("Image: ", image)
 
 
 --
-local width = 1920;
-local height = 1920;
+local width = 1024;
+local height = 768;
 
 local graphPort = Raster2D(width,height);
 utils.drawCheckerboard (graphPort.surface, 8, colors.svg.lightgray, colors.svg.white)
