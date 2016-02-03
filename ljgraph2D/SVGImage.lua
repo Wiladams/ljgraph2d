@@ -34,6 +34,9 @@ function Image.init(self, width, height)
 end
 
 function Image.draw(self, graphPort)
+	for _, shape in ipairs(self.shapes) do
+		shape:draw(graphPort)
+	end
 end
 
 return Image

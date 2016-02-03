@@ -445,13 +445,12 @@ end
 
 
 function SVGParser.resetPath(self)
-	self.npts = 0;
 	self.pts = {};
 end
 
 function SVGParser.addPoint(self, x, y)
+	--print("addPoint: ", x, type(x), y, type(y))
 	table.insert(self.pts, pt2D({tonumber(x),tonumber(y)}));
-	self.npts = self.npts + 1;
 end
 
 function SVGParser.moveTo(self, x, y)
@@ -461,7 +460,6 @@ end
 -- Add a line segment.  The must be at least
 -- one starting point already
 function SVGParser.lineTo(self, x, y)
-
 	if #self.pts > 0 then
 		local lastpt = self.pts[#self.pts];
 		local px = lastpt.x;
@@ -482,7 +480,6 @@ end
 
 function SVGParser.getAttr(self)
 	return self.attr:top();
-	--return self.attr[self.attrHead];
 end
 
 function SVGParser.pushAttr(self)
@@ -494,9 +491,6 @@ end
 
 function SVGParser.popAttr(self)
 	return self.attr:pop();
-	--if (self.attrHead > 0) then
-	--	self.attrHead = self.attrHead - 1;
-	--end
 end
 
 function SVGParser.actualOrigX(self)
@@ -804,7 +798,6 @@ function SVGParser.addPath(self, closed)
 	local path = SVGPath();
 
 	path.closed = closed;
-	path.npts = #self.pts;
 
 	-- Transform path.
 	for i, pt in ipairs(self.pts) do
@@ -901,28 +894,30 @@ static const char* self:getNextPathItem(self, const char* s, char* it)
 end
 --]]
 
---[[
-static unsigned int self:parseColorHex(self, const char* str)
 
-	unsigned int c = 0, r = 0, g = 0, b = 0;
-	int n = 0;
-	str++; // skip #
-	// Calculate number of characters.
-	while(str[n] && !self:isspace(str[n]))
-		n++;
-	if (n == 6) {
-		sscanf(str, "%x", &c);
-	elseif (n == 3) {
-		sscanf(str, "%x", &c);
-		c = (c&0xf) | ((c&0xf0) << 4) | ((c&0xf00) << 8);
-		c |= c<<4;
-	}
-	r = (c >> 16) & 0xff;
-	g = (c >> 8) & 0xff;
-	b = c & 0xff;
-	return NSVG_RGB(r,g,b);
+function SVGParser.parseColorHex(self, s)
+--print(".parseColorHex: ", s)
+
+	local rgb = s:match("#(%g+)")
+--print("rgb: ", rgb)
+	local r,g,b = 0,0,0;
+	local c = 0;
+	rgb = "0x"..rgb;
+
+	if #rgb == 6 then
+		c = tonumber(rgb)
+	elseif #rgb == 3 then
+		c = tonumber(rgb);
+		c = bor(band(c,0xf), lshift(band(c,0xf0), 4), lshift(band(c,0xf00), 8));
+		c = bor(c, lshift(c,4));
+	end
+	b = band(rshift(c, 16), 0xff);
+	g = band(rshift(c, 8), 0xff);
+	r = band(c, 0xff);
+
+	return RGB(r,g,b);
 end
---]]
+
 
 
 function SVGParser.parseColorRGB(self, str)
@@ -954,12 +949,12 @@ end
 
 
 function SVGParser.parseColor(self, s)
-	--print("SVGParser.parseColor: ", s)
 	local str = s:match("%s*(.*)")
-
 	local len = #str;
 	
-	if len >= 1 and string.sub(str,1) == '#' then
+--	print("SVGParser.parseColor: ", str, len)
+
+	if len >= 1 and str:sub(1,1) == '#' then
 		return self:parseColorHex(str);
 	elseif (len >= 4 and str:match("rgb%(")) then
 		return self:parseColorRGB(str);
@@ -1135,11 +1130,15 @@ static int self:parseRotate(float* xform, const char* str)
 
 	return len;
 }
+--]]
 
-function NSVGParser.parseTransform(float* xform, const char* str)
-{
-	float t[6];
-	xform.xformIdentity(xform);
+function SVGParser.parseTransform(self, xform, str)
+print(".parseTransform: ", str);
+
+	local t=ffi.new("double[6]");
+	transform2D.xformIdentity(xform);
+	
+--[[
 	while (*str)
 	{
 		if (strncmp(str, "matrix", 6) == 0)
@@ -1161,8 +1160,8 @@ function NSVGParser.parseTransform(float* xform, const char* str)
 
 		xform.xformPremultiply(xform, t);
 	}
-}
 --]]
+end
 
 
 function SVGParser.parseUrl(self, id, str)
@@ -1323,6 +1322,7 @@ function SVGParser.parseAttr(self, name, value)
 		attr.fontSize = self:parseCoordinate(value, 0.0, self:actualLength());
 	elseif name == "transform" then
 		self:parseTransform(xform, value);
+		print("transform: ", xform[0], xform[1], xform[2], xform[3], xform[4], xform[5])
 		transform2D.xformPremultiply(attr.xform, xform);
 	elseif name == "stop-color" then
 		attr.stopColor = self:parseColor(value);
@@ -1385,8 +1385,6 @@ function SVGParser.pathLineTo(self, cpx, cpy, args, rel)
 		cpy = args[2];
 	end
 
-print("  ", cpx, cpy)
-
 	self:lineTo(cpx, cpy);
 
 	return cpx, cpy;
@@ -1438,7 +1436,7 @@ function SVGParser.pathCubicBezTo(self, cpx, cpy, cpx2, cpy2, args, rel)
 		y2 = args[6];
 	end
 
-	self:cubicBezTo(p, cx1,cy1, cx2,cy2, x2,y2);
+	self:cubicBezTo(cx1,cy1, cx2,cy2, x2,y2);
 
 	cpx2 = cx2;
 	cpy2 = cy2;
@@ -1450,6 +1448,7 @@ end
 
 
 function SVGParser.pathCubicBezShortTo(self, cpx, cpy,cpx2, cpy2, args, rel)
+
 	local x1 = cpx;
 	local y1 = cpy;
 
@@ -1466,10 +1465,12 @@ function SVGParser.pathCubicBezShortTo(self, cpx, cpy,cpx2, cpy2, args, rel)
 	end
 
 
-	cx1 = 2*x1 - cpx2;
-	cy1 = 2*y1 - cpy2;
+	local cx1 = 2*x1 - cpx2;
+	local cy1 = 2*y1 - cpy2;
 
-	self:cubicBezTo(p, cx1,cy1, cx2,cy2, x2,y2);
+	--print(".pathCubicBezShortTo: ", cx1, cy1, cx2, cy2, x2, y2 )
+
+	self:cubicBezTo(cx1,cy1, cx2,cy2, x2,y2);
 
 	cpx2 = cx2;
 	cpy2 = cy2;
@@ -1501,7 +1502,7 @@ function SVGParser.pathQuadBezTo(self, cpx, cpy, cpx2, cpy2, args, rel)
 	local cx2 = x2 + 2.0/3.0*(cx - x2);
 	local cy2 = y2 + 2.0/3.0*(cy - y2);
 
-	self:cubicBezTo(p, cx1,cy1, cx2,cy2, x2,y2);
+	self:cubicBezTo(cx1,cy1, cx2,cy2, x2,y2);
 
 	cpx2 = cx;
 	cpy2 = cy;
@@ -1532,7 +1533,7 @@ function SVGParser.pathQuadBezShortTo(self, cpx, cpy, cpx2, cpy2, args, rel)
 	local cx2 = x2 + 2.0/3.0*(cx - x2);
 	local cy2 = y2 + 2.0/3.0*(cy - y2);
 
-	self:cubicBezTo(p, cx1,cy1, cx2,cy2, x2,y2);
+	self:cubicBezTo(cx1,cy1, cx2,cy2, x2,y2);
 
 	cpx2 = cx;
 	cpy2 = cy;
@@ -1581,7 +1582,7 @@ function SVGParser.pathArcTo(self, cpx, cpy, args, rel)
 	d = sqrtf(dx*dx + dy*dy);
 	if (d < 1e-6f || rx < 1e-6f || ry < 1e-6f) {
 		// The arc degenerates to a line
-		self:lineTo(p, x2, y2);
+		self:lineTo(x2, y2);
 		*cpx = x2;
 		*cpy = y2;
 		return;
@@ -1656,7 +1657,7 @@ function SVGParser.pathArcTo(self, cpx, cpy, args, rel)
 		x, y = xform.xformPoint(dx*rx, dy*ry, t); // position
 		tanx, tany = xform.xformVec(-dy*rx * kappa, dx*ry * kappa, t); // tangent
 		if (i > 0)
-			self:cubicBezTo(p, px+ptanx,py+ptany, x-tanx, y-tany, x, y);
+			self:cubicBezTo(px+ptanx,py+ptany, x-tanx, y-tany, x, y);
 		px = x;
 		py = y;
 		ptanx = tanx;
@@ -1687,11 +1688,11 @@ function parseSVGPath(input)
 end
 
 function SVGParser.parsePath(self, attr)
---print("parsePath: ")
+print("parsePath: ")
 
 	local s = nil;
 	for name,value in pairs(attr) do
---		print('  ',name, value)
+		print('  ',name, value)
 		if name == "d" then
 			s = value;
 		else
@@ -1716,7 +1717,7 @@ function SVGParser.parsePath(self, attr)
 		for _, args in ipairs(instructions) do
 			local cmd = args[1];
 			table.remove(args,1);
---print("  CMD: ", cmd, #args)
+print("  CMD: ", cmd, #args)
 
 			-- now, we have the instruction in the 'ins' value
 			-- and the arguments in the cmd table
@@ -1766,10 +1767,10 @@ function SVGParser.parsePath(self, attr)
                 cpx2 = cpx; 
                 cpy2 = cpy;
 			elseif cmd == "c" or cmd == "C" then
-				--print("CUBICBEZIERTO: ", unpack(args))
+				print("CUBICBEZIERTO: ", unpack(args))
 				cpx, cpy, cpx2, cpy2 = self:pathCubicBezTo(cpx, cpy, cpx2, cpy2, args, cmd == 'c');
 			elseif cmd == "s" or cmd == "S" then
-				--print("CUBICBEZIERSHORTTO: ", unpack(args))
+				print("CUBICBEZIERSHORTTO: ", unpack(args))
 				cpx, cpy, cpx2, cpy2 = self:pathCubicBezShortTo(cpx, cpy, cpx2, cpy2, args, cmd == 's');
 			elseif cmd == "q" or cmd == "Q" then
 				--print("QUADBEZIERTO: ", unpack(args))
@@ -1803,6 +1804,7 @@ function SVGParser.parsePath(self, attr)
 		end
 
 		-- Commit path.
+		print("COMMIT: ", #self.pts)
 		if (#self.pts > 0) then
 			self:addPath(closedFlag);
 		end
@@ -1937,7 +1939,7 @@ function SVGParser.parseEllipse(self, attr)
 		self:cubicBezTo(cx+rx, cy+ry*SVG_KAPPA90, cx+rx*SVG_KAPPA90, cy+ry, cx, cy+ry);
 		self:cubicBezTo(cx-rx*SVG_KAPPA90, cy+ry, cx-rx, cy+ry*SVG_KAPPA90, cx-rx, cy);
 		self:cubicBezTo(cx-rx, cy-ry*SVG_KAPPA90, cx-rx*SVG_KAPPA90, cy-ry, cx, cy-ry);
-		self:cubicBezTo(p, cx+rx*SVG_KAPPA90, cy-ry, cx+rx, cy-ry*SVG_KAPPA90, cx+rx, cy);
+		self:cubicBezTo(cx+rx*SVG_KAPPA90, cy-ry, cx+rx, cy-ry*SVG_KAPPA90, cx+rx, cy);
 
 		self:addPath(true);
 
@@ -2189,6 +2191,7 @@ function SVGParser.startElement(self, el, attr)
 		self:parseAttribs(attr);
 	elseif el == "path" then
 		if self.pathFlag then	-- Do not allow nested paths.
+			print("NESTED PATH")
 			return;
 		end
 
@@ -2251,9 +2254,10 @@ end
 
 
 function SVGParser.imageBounds(self, bounds)
+print(".imageBounds: ", #self.image.shapes)
 
 	if #self.image.shapes < 1 then
-		bounds[0],bounds[1],bounds[2],bounds[3] = 0.0, 0,0,0;
+		bounds[0],bounds[1],bounds[2],bounds[3] = 0,0,0,0;
 		return;
 	end
 
@@ -2290,13 +2294,13 @@ end
 
 
 function SVGParser.scaleToViewbox(self, units)
-
+	print("SHAPE TO VIEW BOX")
 	local bounds = ffi.new("double[4]");
 	local t = ffi.new("double[6]");
 
 	-- Guess image size if not set completely.
 	self:imageBounds(bounds);
-
+--print("image bounds: ", bounds[0], bounds[1], bounds[2], bounds[3])
 	if (self.viewWidth == 0) then
 		if self.image.width > 0 then
 			self.viewWidth = self.image.width;
@@ -2357,13 +2361,15 @@ function SVGParser.scaleToViewbox(self, units)
 	sy = sy*us;
 	local avgs = (sx+sy) / 2.0;
 
+	-- BUGBUG  Something wrong with scaling 
+	-- setting values to 0
+
 	for _, shape in ipairs(self.image.shapes) do
 		shape.bounds[0] = (shape.bounds[0] + tx) * sx;
 		shape.bounds[1] = (shape.bounds[1] + ty) * sy;
 		shape.bounds[2] = (shape.bounds[2] + tx) * sx;
 		shape.bounds[3] = (shape.bounds[3] + ty) * sy;
 
-		--for (path = shape.paths; path != NULL; path = path.next) {
 		for _, path in ipairs(shape.paths) do
 			path.bounds[0] = (path.bounds[0] + tx) * sx;
 			path.bounds[1] = (path.bounds[1] + ty) * sy;
@@ -2373,6 +2379,7 @@ function SVGParser.scaleToViewbox(self, units)
 			for _, pt in ipairs(path.pts) do
 				pt.x = (pt.x + tx) * sx;
 				pt.y = (pt.y + ty) * sy;
+				print(pt.x, pt.y)
 			end
 		end
 

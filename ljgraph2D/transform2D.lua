@@ -86,9 +86,9 @@ function xform.xformPremultiply(t, s)
 end
 
 function xform.xformPoint(x, y, t)
-
 	local dx = x*t[0] + y*t[2] + t[4];
 	local dy = x*t[1] + y*t[3] + t[5];
+
 
 	return dx, dy;
 end

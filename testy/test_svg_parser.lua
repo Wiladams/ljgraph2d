@@ -21,10 +21,8 @@ local graphPort = Raster2D(width,height);
 utils.drawCheckerboard (graphPort.surface, 8, colors.svg.lightgray, colors.svg.white)
 
 --print("  shapes: ", image.shapes, #image.shapes)
+image:draw(graphPort)
 
-for _, shape in ipairs(image.shapes) do
-	shape:draw(graphPort)
-end
 
 utils.save(graphPort.surface, "test_svg_parser.bmp");
 

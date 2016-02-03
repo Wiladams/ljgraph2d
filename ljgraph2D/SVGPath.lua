@@ -1,4 +1,5 @@
 local ffi = require("ffi")
+local floor = math.floor
 
 --[[
 typedef struct NSVGpath
@@ -41,18 +42,27 @@ end
 -- purposes only
 function SVGPath.draw(self, graphPort)
 	print("SVGPath.draw: ", #self.pts)
+self:dump();
 
 	if #self.pts > 1 then
 		for i=1, #self.pts-1 do
 			graphPort:line(
-			self.pts[i+0].x, self.pts[i+0].y, 
-			self.pts[i+1].x, self.pts[i+1].y);
+			floor(self.pts[i+0].x), floor(self.pts[i+0].y), 
+			floor(self.pts[i+1].x), floor(self.pts[i+1].y));
 		end
 
 		if self.closed then
-			graphPort:line(self.pts[#self.pts].x, self.pts[#self.pts].y, 
-				self.pts[1].x, self.pts[1].y);
+			graphPort:line(floor(self.pts[#self.pts].x), floor(self.pts[#self.pts].y), 
+				floor(self.pts[1].x), floor(self.pts[1].y));
 		end
+	end
+end
+
+function SVGPath.dump(self)
+	print("SVGPath.dump")
+	--print("typeof(1): ", ffi.typeof(self.pts[1]))
+	for _, pt in ipairs(self.pts) do
+		print(pt.x, pt.y)
 	end
 end
 

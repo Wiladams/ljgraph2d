@@ -70,6 +70,8 @@ function SVGShape.new(self, params)
 end
 
 function SVGShape.draw(self, graphPort)
+	print("SVGShape.draw: ", self.id)
+	
 	-- set style
 	if self.stroke.color then
 		graphPort:strokeColor(self.stroke.color);
