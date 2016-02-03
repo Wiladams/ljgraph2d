@@ -51,8 +51,10 @@ local isdigit = ctypes.isdigit;
 
 local maths = require("ljgraph2D.maths")
 local clamp = maths.clamp;
+local sqr = maths.sqr;
 local vecrat = maths.vecrat;
 local vecang = maths.vecang;
+local vmag = maths.vmag;
 
 
 local SVGTypes = require("ljgraph2D.SVGTypes")
@@ -60,11 +62,11 @@ local SVGPath = require("ljgraph2D.SVGPath")
 local SVGShape = require("ljgraph2D.SVGShape")
 local SVGImage = require("ljgraph2D.SVGImage")
 
-local function sqr(x)  return x*x; end
-local function vmag(x, y)  return sqrt(x*x + y*y); end
 local sqrt = math.sqrt;
 local fabs = math.abs;
 local abs = math.abs;
+local sin = math.sin;
+local cos = math.cos;
 
 local RGB = colors.RGBA;
 
@@ -1661,125 +1663,157 @@ end
 
 
 function SVGParser.pathArcTo(self, cpx, cpy, args, rel)
-	print(".pathArcTo: ", cpx, cpy)
+	print(".pathArcTo: ", rel, cpx, cpy, unpack(args))
 
 --[[
-	// Ported from canvg (https://code.google.com/p/canvg/)
-	float rx, ry, rotx;
-	float x1, y1, x2, y2, cx, cy, dx, dy, d;
-	float x1p, y1p, cxp, cyp, s, sa, sb;
-	float ux, uy, vx, vy, a1, da;
-	float x, y, tanx, tany, a, px = 0, py = 0, ptanx = 0, ptany = 0, t[6];
-	float sinrx, cosrx;
-	int fa, fs;
-	int i, ndivs;
-	float hda, kappa;
+	-- Ported from canvg (https://code.google.com/p/canvg/)
+	float x1p, y1p,
+	float x, y, tanx, tany, a, 
+--]]
 
-	rx = fabsf(args[0]);				// y radius
-	ry = fabsf(args[1]);				// x radius
-	rotx = args[2] / 180.0f * NSVG_PI;		// x rotation engle
-	fa = fabsf(args[3]) > 1e-6 ? 1 : 0;	// Large arc
-	fs = fabsf(args[4]) > 1e-6 ? 1 : 0;	// Sweep direction
-	x1 = *cpx;							// start point
-	y1 = *cpy;
-	if (rel) {							// end point
-		x2 = *cpx + args[5];
-		y2 = *cpy + args[6];
-	} else {
-		x2 = args[5];
-		y2 = args[6];
-	}
+	local rx = abs(args[1]);				-- y radius
+	local ry = abs(args[2]);				-- x radius
+	local rotx = args[3] / 180.0 * SVG_PI;		-- x rotation angle
+	
+	-- Large arc
+	local fa = false;
+	if abs(args[4]) > 1e-6 then
+		fa = true;
+	end
 
-	dx = x1 - x2;
-	dy = y1 - y2;
-	d = sqrtf(dx*dx + dy*dy);
-	if (d < 1e-6f || rx < 1e-6f || ry < 1e-6f) {
-		// The arc degenerates to a line
+	-- Sweep direction
+	local fs = false;
+	if abs(args[5]) > 1e-6 then
+		fs = true;
+	end
+
+	local x1 = cpx;							-- start point
+	local y1 = cpy;
+	local x2 = args[6];
+	local y2 = args[7];
+
+	if rel then							-- end point
+		x2 = x2 + cpx;
+		y2 = y2 + cpy;
+	else
+		x2 = args[6];
+		y2 = args[7];
+	end
+
+	local dx = x1 - x2;
+	local dy = y1 - y2;
+	local d = sqrt(dx*dx + dy*dy);
+
+
+	if (d < 1e-6 or rx < 1e-6 or ry < 1e-6) then
+		-- The arc degenerates to a line
 		self:lineTo(x2, y2);
-		*cpx = x2;
-		*cpy = y2;
-		return;
-	}
+		cpx = x2;
+		cpy = y2;
+		return cpx, cpy;
+	end
 
-	sinrx = sinf(rotx);
-	cosrx = cosf(rotx);
+	local sinrx = sin(rotx);
+	local cosrx = cos(rotx);
 
-	// Convert to center point parameterization.
-	// http://www.w3.org/TR/SVG11/implnote.html#ArcImplementationNotes
-	// 1) Compute x1', y1'
-	x1p = cosrx * dx / 2.0f + sinrx * dy / 2.0f;
-	y1p = -sinrx * dx / 2.0f + cosrx * dy / 2.0f;
-	d = self:sqr(x1p)/self:sqr(rx) + self:sqr(y1p)/self:sqr(ry);
-	if (d > 1) {
-		d = sqrtf(d);
-		rx *= d;
-		ry *= d;
-	}
-	// 2) Compute cx', cy'
-	s = 0.0f;
-	sa = self:sqr(rx)*self:sqr(ry) - self:sqr(rx)*self:sqr(y1p) - self:sqr(ry)*self:sqr(x1p);
-	sb = self:sqr(rx)*self:sqr(y1p) + self:sqr(ry)*self:sqr(x1p);
-	if (sa < 0.0f) sa = 0.0f;
-	if (sb > 0.0f)
-		s = sqrtf(sa / sb);
-	if (fa == fs)
+
+	-- Convert to center point parameterization.
+	-- http://www.w3.org/TR/SVG11/implnote.html#ArcImplementationNotes
+	-- 1) Compute x1', y1'
+	local x1p = cosrx * dx / 2.0 + sinrx * dy / 2.0;
+	local y1p = -sinrx * dx / 2.0 + cosrx * dy / 2.0;
+	d = sqr(x1p)/sqr(rx) + sqr(y1p)/sqr(ry);
+	if d > 1 then
+		d = sqrt(d);
+		rx = rx * d;
+		ry = ry * d;
+	end
+
+	-- 2) Compute cx', cy'
+	local s = 0.0;
+	local sa = sqr(rx)*sqr(ry) - sqr(rx)*sqr(y1p) - sqr(ry)*sqr(x1p);
+	local sb = sqr(rx)*sqr(y1p) + sqr(ry)*sqr(x1p);
+	if (sa < 0.0) then
+		sa = 0.0;
+	end
+
+	if (sb > 0.0) then
+		s = sqrt(sa / sb);
+	end
+
+	if (fa == fs) then
 		s = -s;
-	cxp = s * rx * y1p / ry;
-	cyp = s * -ry * x1p / rx;
+	end
 
-	// 3) Compute cx,cy from cx',cy'
-	cx = (x1 + x2)/2.0f + cosrx*cxp - sinrx*cyp;
-	cy = (y1 + y2)/2.0f + sinrx*cxp + cosrx*cyp;
+	local cxp = s * rx * y1p / ry;
+	local cyp = s * -ry * x1p / rx;
 
-	// 4) Calculate theta1, and delta theta.
-	ux = (x1p - cxp) / rx;
-	uy = (y1p - cyp) / ry;
-	vx = (-x1p - cxp) / rx;
-	vy = (-y1p - cyp) / ry;
-	a1 = self:vecang(1.0f,0.0f, ux,uy);	// Initial angle
-	da = self:vecang(ux,uy, vx,vy);		// Delta angle
 
+	-- 3) Compute cx,cy from cx',cy'
+	local cx = (x1 + x2)/2.0 + cosrx*cxp - sinrx*cyp;
+	local cy = (y1 + y2)/2.0 + sinrx*cxp + cosrx*cyp;
+
+	-- 4) Calculate theta1, and delta theta.
+	local ux = (x1p - cxp) / rx;
+	local uy = (y1p - cyp) / ry;
+	local vx = (-x1p - cxp) / rx;
+	local vy = (-y1p - cyp) / ry;
+	local a1 = vecang(1.0,0.0, ux,uy);	-- Initial angle
+	local da = vecang(ux,uy, vx,vy);		-- Delta angle
+
+--[[
 //	if (vecrat(ux,uy,vx,vy) <= -1.0f) da = NSVG_PI;
 //	if (vecrat(ux,uy,vx,vy) >= 1.0f) da = 0;
+--]]
 
-	if (fa) {
-		// Choose large arc
-		if (da > 0.0f)
-			da = da - 2*NSVG_PI;
+	if (fa) then
+		-- Choose large arc
+		if (da > 0.0) then
+			da = da - 2*SVG_PI;
 		else
-			da = 2*NSVG_PI + da;
-	}
+			da = 2*SVG_PI + da;
+		end
+	end
 
-	// Approximate the arc using cubic spline segments.
+
+	-- Approximate the arc using cubic spline segments.
+	local t = ffi.new("double[6]");
 	t[0] = cosrx; t[1] = sinrx;
 	t[2] = -sinrx; t[3] = cosrx;
 	t[4] = cx; t[5] = cy;
 
-	// Split arc into max 90 degree segments.
-	// The loop assumes an iteration per end point (including start and end), this +1.
-	ndivs = (int)(fabsf(da) / (NSVG_PI*0.5f) + 1.0f);
-	hda = (da / (float)ndivs) / 2.0f;
-	kappa = fabsf(4.0f / 3.0f * (1.0f - cosf(hda)) / sinf(hda));
-	if (da < 0.0f)
-		kappa = -kappa;
 
-	for (i = 0; i <= ndivs; i++) {
-		a = a1 + da * (i/(float)ndivs);
-		dx = cosf(a);
-		dy = sinf(a);
-		x, y = xform.xformPoint(dx*rx, dy*ry, t); // position
-		tanx, tany = xform.xformVec(-dy*rx * kappa, dx*ry * kappa, t); // tangent
-		if (i > 0)
+	-- Split arc into max 90 degree segments.
+	-- The loop assumes an iteration per end point (including start and end), this +1.
+	local ndivs = abs(da) / (SVG_PI*0.5) + 1.0;
+	local hda = (da / ndivs) / 2.0;
+	local kappa = abs(4.0 / 3.0 * (1.0 - cos(hda)) / sin(hda));
+	
+	if (da < 0.0) then
+		kappa = -kappa;
+	end
+	
+	local px, py, ptanx, ptany = 0,0,0,0;
+
+	for i = 0, ndivs  do
+		local a = a1 + da * (i/ndivs);
+		dx = cos(a);
+		dy = sin(a);
+		x, y = transform2D.xformPoint(dx*rx, dy*ry, t); -- position
+		tanx, tany = transform2D.xformVec(-dy*rx * kappa, dx*ry * kappa, t); -- tangent
+		if i > 0 then
 			self:cubicBezTo(px+ptanx,py+ptany, x-tanx, y-tany, x, y);
+		end
+
 		px = x;
 		py = y;
 		ptanx = tanx;
 		ptany = tany;
-	}
+	end
 
 	cpx = x2;
 	cpy = y2;
---]]
+
 
 	return cpx, cpy;
 end
@@ -1893,7 +1927,6 @@ function SVGParser.parsePath(self, attr)
 				cpx, cpy, cpx2, cpy2 = self:pathQuadBezShortTo(cpx, cpy, cpx2, cpy2, args, cmd == 't');
 
 			elseif cmd == "a" or cmd == "A" then
-				--print("ARCTO: ", unpack(args))
 				cpx, cpy = self:pathArcTo(cpx, cpy, args, cmd == 'a');
                 cpx2 = cpx; 
                 cpy2 = cpy;

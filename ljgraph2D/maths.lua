@@ -18,6 +18,11 @@ local function curveDivs(r, arc, tol)
 	return divs;
 end
 
+-- fairly efficient division by 255
+local function div255(x)
+    return rshift(((x+1) * 257), 16);
+end
+
 local function GetAlignedByteCount(width, bitsPerPixel, byteAlignment)
     local nbytes = width * (bitsPerPixel/8);
     return nbytes + (byteAlignment - (nbytes % byteAlignment)) % 4
@@ -33,6 +38,8 @@ local function lineMag(x1, y1, x2, y2)
 
 	return sqrt(x*x+y*y);
 end
+
+local function vmag(x, y)  return sqrt(x*x + y*y); end
 
 local function normalize(x, y)
 	local d = sqrt(x*x + y*y);
@@ -119,10 +126,11 @@ local function sgn(x)
 	return 0
 end
 
--- fairly efficient division by 255
-local function div255(x)
-    return rshift(((x+1) * 257), 16);
-end
+local function sqr(x)  return x*x; end
+
+
+
+
 
 return {
 	clamp = clamp;
@@ -139,8 +147,9 @@ return {
 	RANGEMAP = RANGEMAP;
 	round = round;
 	sgn = sgn;
+	sqr = sqr;
 
 	vecang = vecang;
 	vecrat = vecrat;
-
+	vmag = vmag;
 }
