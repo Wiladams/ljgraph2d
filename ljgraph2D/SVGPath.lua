@@ -41,8 +41,8 @@ end
 -- primarily usable for test 
 -- purposes only
 function SVGPath.draw(self, graphPort)
-	print("SVGPath.draw: ", #self.pts)
-self:dump();
+	--print("SVGPath.draw: ", #self.pts)
+	--self:dump();
 
 	if #self.pts > 1 then
 		for i=1, #self.pts-1 do
@@ -60,7 +60,6 @@ end
 
 function SVGPath.dump(self)
 	print("SVGPath.dump")
-	--print("typeof(1): ", ffi.typeof(self.pts[1]))
 	for _, pt in ipairs(self.pts) do
 		print(pt.x, pt.y)
 	end

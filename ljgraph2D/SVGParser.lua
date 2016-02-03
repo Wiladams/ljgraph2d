@@ -47,6 +47,7 @@ local Bezier = require("ljgraph2D.Bezier")
 local colors = require("ljgraph2D.colors")
 local ctypes = require("ljgraph2D.ctypes")
 local isspace = ctypes.isspace;
+local isdigit = ctypes.isdigit;
 
 local maths = require("ljgraph2D.maths")
 local clamp = maths.clamp;
@@ -238,7 +239,7 @@ local function AttributeStack()
 end
 
 
-local function strncpy(dst, value, limit);
+local function strncpy(dst, value, limit)
 	local s = ffi.cast("const char *", value)
 	for i=0,limit-1 do
 		if value[i] == 0 then
@@ -251,6 +252,19 @@ local function strncpy(dst, value, limit);
 	return dst;
 end
 
+local function strncmp(str1, str2, num)
+	local ptr1 = ffi.cast("const char*", str1)
+	local ptr2 = ffi.cast("const char*", str2)
+
+	for i=0,num-1 do
+		if ptr1[i] == 0 or ptr2[i] == 0 then return 0 end
+
+		if ptr1[i] > ptr2[i] then return 1 end
+		if ptr1[i] < ptr2[i] then return -1 end
+	end
+
+	return 0
+end
 
 --[[
 	bounds[0] == left
@@ -829,50 +843,86 @@ function SVGParser.addPath(self, closed)
 end
 
 
---[[
-function NSVGParser.parseNumber(self, const char* s, char* it, size)
+-- parse a numeric value out of a string pointer
+-- stuff it into the 'it' buffer, which is of size 'size'
+-- and return the pointer one character past the last 
+-- digit parsed.
+function SVGParser.parseNumber(self, s, it, size)
+	--print(".parseNumber: ", ffi.string(s), size)
 
 	local last = size-1;
 	local i = 0;
 
 	-- sign
-	if (*s == '-' || *s == '+') {
-		if (i < last) it[i++] = *s;
-		s++;
-	}
-	-- integer part
-	while (*s && self:isdigit(*s)) {
-		if (i < last) it[i++] = *s;
-		s++;
-	}
-	if (*s == '.') {
-		-- decimal point
-		if (i < last) it[i++] = *s;
-		s++;
-		-- fraction part
-		while (*s && self:isdigit(*s)) {
-			if (i < last) it[i++] = *s;
-			s++;
-		}
-	}
-	-- exponent
-	if (*s == 'e' || *s == 'E') {
-		if (i < last) it[i++] = *s;
-		s++;
-		if (*s == '-' || *s == '+') {
-			if (i < last) it[i++] = *s;
-			s++;
-		}
-		while (*s && self:isdigit(*s)) {
-			if (i < last) it[i++] = *s;
-			s++;
-		}
-	}
-	it[i] = '\0';
+	if (s[0] == string.byte('-') or s[0] == string.byte('+')) then
+		if i < last then
+			it[i] = s[0];
+			i = i + 1;
+		end
 
-	return s;
+		s = s + 1;
+	end
+
+	-- integer part
+	while s[0]~= 0 and isdigit(s[0]) do
+		if (i < last) then
+			it[i] = s[0];
+			i = i + 1;
+		end
+
+		s = s + 1;
+	end
+
+	if s[0] == string.byte('.') then
+		-- decimal point
+		if (i < last) then
+			it[i] = s[0];
+			i = i + 1;
+		end
+
+		s = s + 1;
+
+		-- fraction part
+		while s[0] ~= 0 and isdigit(s[0]) do
+			if (i < last) then
+				it[i] = s[0];
+				i = i + 1;
+			end
+			s = s + 1;
+		end
+	end
+
+	-- exponent
+	if (s[0] == string.byte('e') or s[0] == string.byte('E')) then
+		if (i < last) then
+			it[i] = s[0];
+			i = i + 1;
+		end
+		s = s + 1;
+
+		if s[0] == string.byte('-') or s[0] == string.byte('+') then
+			if (i < last) then
+				it[i] = s[0];
+				i = i + 1;
+			end
+			s = s + 1;
+		end
+
+		while s[0] and isdigit(s[0]) do
+			if (i < last) then
+				it[i] = s[0];
+				i = i + 1;
+			end
+			s = s + 1;
+		end
+	end
+
+	it[i] = 0;
+--print(".parseNumber - END: ", ffi.string(it))
+
+	return s, tonumber(ffi.string(it));
 end
---]]
+
 
 --[[
 static const char* self:getNextPathItem(self, const char* s, char* it)
@@ -1009,52 +1059,90 @@ end
 
 
 function SVGParser.parseCoordinate(self, str, orig, length)
-
+	--print(".parseCoordinate: ", str, orig, length)
 	local coord = self:parseCoordinateRaw(str);
 	return self:convertToPixels(coord, orig, length);
 end
 
---[[
-function SVGParser.parseTransformArgs(self, const char* str, float* args, int maxNa, int* na)
 
-	const char* end;
-	const char* ptr;
-	char it[64];
+function SVGParser.parseTransformArgs(self, str, args, maxNa, na)
 
-	*na = 0;
-	ptr = str;
-	while (*ptr && *ptr != '(') ++ptr;
-	if (*ptr == 0)
-		return 1;
-	end = ptr;
-	while (*end && *end != ')') ++end;
-	if (*end == 0)
-		return 1;
+	local it = ffi.new("char [64]");
 
-	while (ptr < end) {
-		if (*ptr == '-' or *ptr == '+' or *ptr == '.' or isdigit(*ptr)) {
-			if (*na >= maxNa) return 0;
-			ptr = self:parseNumber(ptr, it, 64);
-			args[(*na)++] = (float)atof(it);
-		} else {
-			++ptr;
-		}
-	}
-	return (int)(end - str);
+	na = 0;
+	
+	-- advance past the opening '('
+	local ptr = str;
+	while (ptr[0] ~= 0 and ptr[0] ~= string.byte('(')) do
+		ptr = ptr + 1;
+	end
+
+
+	if ptr[0] == 0 then
+		return 1, na;
+	end
+
+	-- find the right ')'
+	local ending = ptr;
+	while ending[0]~=0 and ending[0] ~= string.byte(')') do
+		ending = ending + 1;
+	end
+
+	if ending[0] == 0 then
+		return 1, na;
+	end
+
+	while (ptr < ending) do
+		if (ptr[0] == string.byte('-') or 
+			ptr[0] == string.byte('+') or 
+			ptr[0] == string.byte('.') or 
+			isdigit(ptr[0])) then
+
+			if na >= maxNa then
+				return 0;
+			end
+
+			ptr, num = self:parseNumber(ptr, it, 64);
+--print('.printTransformArgs: ', na, num)
+			args[na] = num;
+
+			--print("IT: ", ffi.string(it));
+
+			na = na + 1;
+		else
+			ptr = ptr + 1;
+		end
+	end
+
+	return ending - str, na;
 end
---]]
+
+
+
+function SVGParser.parseMatrix(self, xform, str)
+	print(".parseMatrix: ", ffi.string(str))
+
+	local  t = ffi.new("double[6]");
+	local na = 0;
+	local len, na = self:parseTransformArgs(str, t, 6, na);
+	print(".parseMatrix, len, na: ", len, na)
+
+	if (na ~= 6) then
+		return len;
+	end
+
+	ffi.copy(xform, t, ffi.sizeof("double")*6);
+
+	for i=0,5 do
+		print(xform[i])
+	end
+
+	print(".parseMatrix - END")
+
+	return len;
+end
 
 --[[
-static int self:parseMatrix(float* xform, const char* str)
-{
-	float t[6];
-	int na = 0;
-	int len = self:parseTransformArgs(str, t, 6, &na);
-	if (na != 6) return len;
-	memcpy(xform, t, sizeof(float)*6);
-	return len;
-}
-
 static int self:parseTranslate(float* xform, const char* str)
 {
 	float args[2];
@@ -1132,35 +1220,37 @@ static int self:parseRotate(float* xform, const char* str)
 }
 --]]
 
-function SVGParser.parseTransform(self, xform, str)
-print(".parseTransform: ", str);
+function SVGParser.parseTransform(self, xform, s)
+	--print(".parseTransform: ", s);
 
+	local str = ffi.cast("const char *", s)
 	local t=ffi.new("double[6]");
 	transform2D.xformIdentity(xform);
 	
---[[
-	while (*str)
-	{
-		if (strncmp(str, "matrix", 6) == 0)
-			str += self:parseMatrix(t, str);
-		else if (strncmp(str, "translate", 9) == 0)
-			str += self:parseTranslate(t, str);
-		else if (strncmp(str, "scale", 5) == 0)
-			str += self:parseScale(t, str);
-		else if (strncmp(str, "rotate", 6) == 0)
-			str += self:parseRotate(t, str);
-		else if (strncmp(str, "skewX", 5) == 0)
-			str += self:parseSkewX(t, str);
-		else if (strncmp(str, "skewY", 5) == 0)
-			str += self:parseSkewY(t, str);
-		else{
-			++str;
-			continue;
-		}
+	while (str[0] ~= 0) do
+		local cont = false;
 
-		xform.xformPremultiply(xform, t);
-	}
---]]
+		if strncmp(str, "matrix", 6) == 0 then
+			str = str + self:parseMatrix(t, str);
+		elseif strncmp(str, "translate", 9) == 0 then
+			str = str + self:parseTranslate(t, str);
+		elseif strncmp(str, "scale", 5) == 0 then
+			str = str + self:parseScale(t, str);
+		elseif strncmp(str, "rotate", 6) == 0 then
+			str = str + self:parseRotate(t, str);
+		elseif strncmp(str, "skewX", 5) == 0 then
+			str = str + self:parseSkewX(t, str);
+		elseif strncmp(str, "skewY", 5) == 0 then
+			str = str + self:parseSkewY(t, str);
+		else
+			str = str + 1;
+			cont = true;
+		end
+
+		if not cont then
+			transform2D.xformPremultiply(xform, t);
+		end
+	end
 end
 
 
@@ -1209,17 +1299,17 @@ function SVGParser.parseLineJoin(self, str)
 	return LineCap.BUTT;
 end
 
---[[
-static char self:parseFillRule(const char* str)
-{
-	if (strcmp(str, "nonzero") == 0)
-		return NSVG_FILLRULE_NONZERO;
-	else if (strcmp(str, "evenodd") == 0)
-		return NSVG_FILLRULE_EVENODD;
-	// TODO: handle inherit.
-	return NSVG_FILLRULE_NONZERO;
-}
+	local FillRuleConversion = {
+		nonzero = FillRule.NONZERO;
+		evenodd = FillRule.EVENODD;
+	}
 
+function SVGParser.parseFillRule(self, str)
+	return FillRuleConversion[str] or FillRule.NONZERO;
+end
+
+
+--[[
 static const char* self:getNextDashItem(const char* s, char* it)
 {
 	int n = 0;
@@ -1235,7 +1325,9 @@ static const char* self:getNextDashItem(const char* s, char* it)
 	it[n++] = '\0';
 	return s;
 }
+--]]
 
+--[[
 static int self:parseStrokeDashArray(self, const char* str, float* strokeDashArray)
 {
 	char item[64];
@@ -1392,7 +1484,6 @@ end
 
 
 function SVGParser.pathHLineTo(self, cpx, cpy, args, rel)
-
 	if rel then
 		cpx = cpx + args[1];
 	else
@@ -1688,11 +1779,11 @@ function parseSVGPath(input)
 end
 
 function SVGParser.parsePath(self, attr)
-print("parsePath: ")
+--print("parsePath: ")
 
 	local s = nil;
 	for name,value in pairs(attr) do
-		print('  ',name, value)
+		--print('  ',name, value)
 		if name == "d" then
 			s = value;
 		else
@@ -1717,7 +1808,7 @@ print("parsePath: ")
 		for _, args in ipairs(instructions) do
 			local cmd = args[1];
 			table.remove(args,1);
-print("  CMD: ", cmd, #args)
+--print("  CMD: ", cmd, #args)
 
 			-- now, we have the instruction in the 'ins' value
 			-- and the arguments in the cmd table
@@ -1767,10 +1858,10 @@ print("  CMD: ", cmd, #args)
                 cpx2 = cpx; 
                 cpy2 = cpy;
 			elseif cmd == "c" or cmd == "C" then
-				print("CUBICBEZIERTO: ", unpack(args))
+				--print("CUBICBEZIERTO: ", unpack(args))
 				cpx, cpy, cpx2, cpy2 = self:pathCubicBezTo(cpx, cpy, cpx2, cpy2, args, cmd == 'c');
 			elseif cmd == "s" or cmd == "S" then
-				print("CUBICBEZIERSHORTTO: ", unpack(args))
+				--print("CUBICBEZIERSHORTTO: ", unpack(args))
 				cpx, cpy, cpx2, cpy2 = self:pathCubicBezShortTo(cpx, cpy, cpx2, cpy2, args, cmd == 's');
 			elseif cmd == "q" or cmd == "Q" then
 				--print("QUADBEZIERTO: ", unpack(args))
@@ -1804,7 +1895,7 @@ print("  CMD: ", cmd, #args)
 		end
 
 		-- Commit path.
-		print("COMMIT: ", #self.pts)
+		--print("COMMIT: ", #self.pts)
 		if (#self.pts > 0) then
 			self:addPath(closedFlag);
 		end
@@ -1858,7 +1949,7 @@ function SVGParser.parseRect(self, attr)
 			self:lineTo(x+w, y+h);
 			self:lineTo(x, y+h);
 		else 
-			print("ROUNDED RECT")
+			--print("ROUNDED RECT")
 --[[
 			-- Rounded rectangle
 			self:moveTo(x+rx, y);
@@ -1974,15 +2065,23 @@ end
 
 
 function SVGParser.parsePoly(self, attr, closeFlag)
+	--local coordspatt = "([^ ]+)";
+	local coordspatt = "(%g+%s*,%s*%g+)";
+	--local xypatt = "([^,]+),(.*)";
+	local xypatt = "(%g+)%s*,%s*(%g+)";
+
 	self:resetPath();
 
 	for name, value in pairs(attr) do
 		if (not self:parseAttr(name, value)) then
 			if name == "points" then
 				local firstone = true;
-				for coords in string.gmatch(value, "([^ ]+)") do
-					x, y = coords:match("([^,]+),(.*)")
+				for coords in string.gmatch(value, coordspatt) do
+					--print(".parsePoly(): ",coords)
+					x, y = coords:match(xypatt)
 					if x and y then
+						--print("  x,y: ", x, y)
+
 						if firstone then
 							self:moveTo(tonumber(x), tonumber(y));
 							firstone = not firstone;
@@ -2001,12 +2100,13 @@ function SVGParser.parsePoly(self, attr, closeFlag)
 end
 
 function SVGParser.parseSVG(self, attrs)
---print("SVGParser.parseSVG - BEGIN")
+	--print("SVGParser.parseSVG - BEGIN")
+	
 	for name, value in pairs(attrs) do
 		--print("SVGParser.parseSVG: ", name, value)
 
 		if (not self:parseAttr(name, value)) then
-
+			--print("  name, value: ", name, value)
 			if name == "width" then
 				self.image.width = self:parseCoordinate(value, 0.0, 1.0);
 			elseif name == "height" then
@@ -2254,7 +2354,7 @@ end
 
 
 function SVGParser.imageBounds(self, bounds)
-print(".imageBounds: ", #self.image.shapes)
+--print(".imageBounds: ", #self.image.shapes)
 
 	if #self.image.shapes < 1 then
 		bounds[0],bounds[1],bounds[2],bounds[3] = 0,0,0,0;
@@ -2267,6 +2367,8 @@ print(".imageBounds: ", #self.image.shapes)
 		bounds[2] = maxf(bounds[2], shape.bounds[2]);
 		bounds[3] = maxf(bounds[3], shape.bounds[3]);
 	end
+
+	print(".imageBounds - END: ", bounds[0], bounds[1], bounds[2], bounds[3])
 
 	return bounds[0], bounds[1], bounds[2], bounds[3];
 end
@@ -2294,7 +2396,7 @@ end
 
 
 function SVGParser.scaleToViewbox(self, units)
-	print("SHAPE TO VIEW BOX")
+	print("SHAPE TO VIEW BOX: ", units)
 	local bounds = ffi.new("double[4]");
 	local t = ffi.new("double[6]");
 
@@ -2309,6 +2411,7 @@ function SVGParser.scaleToViewbox(self, units)
 			self.viewWidth = bounds[2] - bounds[0];
 		end
 	end
+	
 	if (self.viewHeight == 0) then
 		if (self.image.height > 0) then
 			self.viewHeight = self.image.height;
@@ -2371,6 +2474,7 @@ function SVGParser.scaleToViewbox(self, units)
 		shape.bounds[3] = (shape.bounds[3] + ty) * sy;
 
 		for _, path in ipairs(shape.paths) do
+			--print("PATH, sx, sy: ", sx, sy)
 			path.bounds[0] = (path.bounds[0] + tx) * sx;
 			path.bounds[1] = (path.bounds[1] + ty) * sy;
 			path.bounds[2] = (path.bounds[2] + tx) * sx;
@@ -2379,7 +2483,7 @@ function SVGParser.scaleToViewbox(self, units)
 			for _, pt in ipairs(path.pts) do
 				pt.x = (pt.x + tx) * sx;
 				pt.y = (pt.y + ty) * sy;
-				print(pt.x, pt.y)
+				--print(pt.x, pt.y)
 			end
 		end
 
@@ -2401,6 +2505,8 @@ function SVGParser.scaleToViewbox(self, units)
 			shape.strokeDashArray[i] = shape.strokeDashArray[i] * avgs;
 		end
 	end
+
+	print("SHAPE TO VIEW BOX - END")
 end
 
 

@@ -9,7 +9,7 @@ end
 
 
 local function isdigit(c)
-	return c >= string.byte('1') and
+	return c >= string.byte('0') and
 		c <= string.byte('9')
 end
 

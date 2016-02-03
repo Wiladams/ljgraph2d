@@ -14,8 +14,8 @@ print("Image: ", image)
 
 
 --
-local width = 1900;
-local height = 1280;
+local width = 1920;
+local height = 1920;
 
 local graphPort = Raster2D(width,height);
 utils.drawCheckerboard (graphPort.surface, 8, colors.svg.lightgray, colors.svg.white)

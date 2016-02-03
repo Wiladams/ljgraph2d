@@ -239,8 +239,9 @@ end
 
 -- Arbitrary line using Bresenham
 function Raster2D.line(self, x1, y1, x2, y2, value)
-print("Raster2D.line: ", x1, y1, x2, y2)
+--print("Raster2D.line: ", x1, y1, x2, y2)
 
+---[[
 	value = value or self.StrokeColor;
 
 	x1 = floor(x1);
@@ -290,6 +291,7 @@ print("Raster2D.line: ", x1, y1, x2, y2)
 			self.surface:pixel( px, py, value);
 		end
 	end
+--]]
 end
 
 function Raster2D.setPixel(self, x, y, value)
