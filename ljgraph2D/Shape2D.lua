@@ -169,28 +169,6 @@ function Shape2D.flattenShapeStroke(NSVGrasterizer* r, NSVGshape* shape, float s
 	end
 end
 
-function Shape2D.flattenShape(self, scale)
-
-	int i, j;
-
-	for _, path in ipairs(shape.paths) do
-		self.npoints = 0;
-		
-		-- Flatten path
-		self:addPathPoint(path->pts[0]*scale, path->pts[1]*scale, 0);
-		for (i = 0; i < path->npts-1; i += 3) {
-			float* p = &path->pts[i*2];
-			self:flattenCubicBez(p[0]*scale,p[1]*scale, p[2]*scale,p[3]*scale, p[4]*scale,p[5]*scale, p[6]*scale,p[7]*scale, 0, 0);
-		end
-
-		-- Close path
-		self:addPathPoint(path.pts[0]*scale, path.pts[1]*scale, 0);
-		-- Build edges
-		for (i = 0, j = r->npoints-1; i < r->npoints; j = i++) do
-			self:addEdge(self.points[j].x, self.points[j].y, self.points[i].x, self.points[i].y);
-		end
-	end
-end
 
 function Shape2D.rasterizeSortedEdges(NSVGrasterizer *r, float tx, float ty, float scale, cache, char fillRule)
 

@@ -433,5 +433,121 @@ function Raster2D.cubicBezier(self, x1, y1, x2,y2, x3, y3, x4, y4, value)
 	self:line(x3,y3,  x4, y4, value);
 end
 --]]
+--[[
+function Raster2D.flattenShape(self, shape, scale)
+
+	for _, path in ipairs(shape.paths) do
+		self.npoints = 0;
+		
+		-- Flatten path
+		self:addPathPoint(path.pts[1].x*scale, path.pts[1].y*scale, 0);
+		for i = 1, #path.pts-1,  3 do
+			self:flattenCubicBez(path.pts[i].x*scale,path.pts[i].y*scale, 
+				path.pts[i+1].x*scale,path.pts[i+1].y*scale, 
+				path.pts[i+2].x*scale,path.pts[i+2].y*scale, 
+				path.pts[i+3].x*scale,path.pts[i+3].y*scale, 
+				0, 0);
+		end
+
+		-- Close path
+		self:addPathPoint(path.pts[1].x*scale, path.pts[1].y*scale, 0);
+
+		-- Build edges
+		for (i = 0, j = r->npoints-1; i < r->npoints; j = i++) do
+			self:addEdge(self.points[j].x, self.points[j].y, self.points[i].x, self.points[i].y);
+		end
+	end
+end
+--]]
+
+--[=[
+function Raster2D.drawImage(self, image, tx, ty, scale)
+
+--				   unsigned char* dst, int w, int h, int stride)
+
+	--NSVGshape *shape = NULL;
+	--NSVGedge *e = NULL;
+	--NSVGcachedPaint cache;
+	--int i;
+
+	--r->bitmap = dst;
+	--r->width = w;
+	--r->height = h;
+	--r->stride = stride;
+--[[
+	if (w > r->cscanline) {
+		r->cscanline = w;
+		r->scanline = (unsigned char*)realloc(r->scanline, w);
+		if (r->scanline == NULL) return;
+	}
+--]]
+	--for (i = 0; i < h; i++)
+	--	memset(&dst[i*stride], 0, w*4);
+
+	for _, shape in ipairs(image.shapes) do
+		--if (band(shape.flags, Flags.VISIBLE) == 0)
+		--	continue;
+
+		if shape.fill.type ~= PaintType.NONE then
+			nsvg__resetPool(r);
+			self.freelist = nil;
+			r.nedges = 0;
+
+			self:flattenShape(shape, scale);
+
+			-- Scale and translate edges
+			for (i = 0; i < r->nedges; i++) {
+				e = &r->edges[i];
+				e->x0 = tx + e->x0;
+				e->y0 = (ty + e->y0) * NSVG__SUBSAMPLES;
+				e->x1 = tx + e->x1;
+				e->y1 = (ty + e->y1) * NSVG__SUBSAMPLES;
+			}
+
+			-- Rasterize edges
+			qsort(r->edges, r->nedges, sizeof(NSVGedge), nsvg__cmpEdge);
+
+			-- now, traverse the scanlines and find the intersections on each scanline, use non-zero rule
+			initPaint(&cache, &shape->fill, shape->opacity);
+
+			self:rasterizeSortedEdges(tx,ty,scale, &cache, shape->fillRule);
+		end
+
+		if (shape->stroke.type != NSVG_PAINT_NONE && (shape->strokeWidth * scale) > 0.01f) {
+			nsvg__resetPool(r);
+			r->freelist = NULL;
+			r->nedges = 0;
+
+			nsvg__flattenShapeStroke(r, shape, scale);
+
+//			dumpEdges(r, "edge.svg");
+
+			// Scale and translate edges
+			for (i = 0; i < r->nedges; i++) {
+				e = &r->edges[i];
+				e->x0 = tx + e->x0;
+				e->y0 = (ty + e->y0) * NSVG__SUBSAMPLES;
+				e->x1 = tx + e->x1;
+				e->y1 = (ty + e->y1) * NSVG__SUBSAMPLES;
+			}
+
+			// Rasterize edges
+			qsort(r->edges, r->nedges, sizeof(NSVGedge), nsvg__cmpEdge);
+
+			// now, traverse the scanlines and find the intersections on each scanline, use non-zero rule
+			nsvg__initPaint(&cache, &shape->stroke, shape->opacity);
+
+			nsvg__rasterizeSortedEdges(r, tx,ty,scale, &cache, NSVG_FILLRULE_NONZERO);
+		}
+	}
+
+	nsvg__unpremultiplyAlpha(dst, w, h, stride);
+
+	r->bitmap = NULL;
+	r->width = 0;
+	r->height = 0;
+	r->stride = 0;
+end
+--]=]
 
 return Raster2D
