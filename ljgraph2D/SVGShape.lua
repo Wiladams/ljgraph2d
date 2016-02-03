@@ -6,6 +6,8 @@ local LineJoin = SVGTypes.LineJoin;
 local LineCap = SVGTypes.LineCap;
 local FillRule = SVGTypes.FillRule;
 local Flags = SVGTypes.Flags;
+local PaintType = SVGTypes.PaintType;
+
 
 --[[
 typedef struct NSVGshape
@@ -60,8 +62,6 @@ function SVGShape.init(self, obj)
 	}
 	setmetatable(obj, SVGShape_mt)
 
-print("SVGShape(), bounds: ", obj.bounds)
-
 	return obj
 end
 
@@ -75,8 +75,8 @@ function SVGShape.draw(self, graphPort)
 		graphPort:strokeColor(self.stroke.color);
 	end
 
-	if self.fill.color then
-		graphPort:fillColor(self.stroke.color);
+	if self.fill.type == PaintType.COLOR then
+		graphPort:fillColor(self.fill.color);
 	end
 
 	for pidx, path in ipairs(self.paths) do

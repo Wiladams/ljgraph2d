@@ -40,7 +40,7 @@ end
 -- primarily usable for test 
 -- purposes only
 function SVGPath.draw(self, graphPort)
-	--print("SVGPath.draw: ", #self.pts)
+	print("SVGPath.draw: ", #self.pts)
 
 	if #self.pts > 1 then
 		for i=1, #self.pts-1 do

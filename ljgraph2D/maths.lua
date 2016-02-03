@@ -45,6 +45,31 @@ local function normalize(x, y)
 	return d, x, y;
 end
 
+local function vecrat(ux, uy, vx, vy)
+	return (ux*vx + uy*vy) / (vmag(ux,uy) * vmag(vx,vy));
+end
+
+
+
+local function vecang(ux, uy, vx, vy)
+
+	local r = vecrat(ux,uy, vx,vy);
+	if (r < -1.0) then
+		r = -1.0;
+	end
+
+	if (r > 1.0) then
+		r = 1.0;
+	end
+
+	local acs = acos(r);
+	if (ux*vy < uy*vx) then 
+		return -1.0 * acs;
+	end
+
+	return acs;
+end
+
 local function pointLineIntersection(x1, y1, x2, y2, x3, y3)
 	local mag = lineMag(x1, y1, x2, y2)
 	local u = ((x3 - x1)*(x2-x1) + (y3-y1)*(y2-y1))/(mag*mag)
@@ -114,4 +139,8 @@ return {
 	RANGEMAP = RANGEMAP;
 	round = round;
 	sgn = sgn;
+
+	vecang = vecang;
+	vecrat = vecrat;
+
 }

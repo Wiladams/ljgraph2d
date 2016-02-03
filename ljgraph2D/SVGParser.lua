@@ -50,6 +50,9 @@ local isspace = ctypes.isspace;
 
 local maths = require("ljgraph2D.maths")
 local clamp = maths.clamp;
+local vecrat = maths.vecrat;
+local vecang = maths.vecang;
+
 
 local SVGTypes = require("ljgraph2D.SVGTypes")
 local SVGPath = require("ljgraph2D.SVGPath")
@@ -235,6 +238,18 @@ local function AttributeStack()
 end
 
 
+local function strncpy(dst, value, limit);
+	local s = ffi.cast("const char *", value)
+	for i=0,limit-1 do
+		if value[i] == 0 then
+			break;
+		end
+
+		dst[i] = s[i];
+	end
+
+	return dst;
+end
 
 
 --[[
@@ -681,27 +696,27 @@ function SVGParser.addShape(self)
 
 	local attr = self:getAttr();
 	local scale = 1.0;
---	NSVGshape *shape, *cur, *prev;
---	NSVGpath* path;
 
---print("addShape, plist, attr: ", self.plist, attr)
+
 	if (self.plist == NULL) then
 		return;
 	end
 
 	local shape = SVGShape();
 
+	shape.id = ffi.string(attr.id);
+--print("addShape(), shape.id: ", shape.id)
 
---	memcpy(shape.id, attr.id, sizeof shape.id);
 	scale = self:getAverageScale(attr.xform);
 	shape.strokeWidth = attr.strokeWidth * scale;
 	shape.strokeDashOffset = attr.strokeDashOffset * scale;
 	shape.strokeDashCount = attr.strokeDashCount;
 
 	
---	for (i = 0; i < attr.strokeDashCount; i++)
---		shape.strokeDashArray[i] = attr.strokeDashArray[i] * scale;
-	
+	for i = 0, attr.strokeDashCount-1 do
+		shape.strokeDashArray[i] = attr.strokeDashArray[i] * scale;
+	end
+
 	shape.strokeLineJoin = attr.strokeLineJoin;
 	shape.strokeLineCap = attr.strokeLineCap;
 	shape.fillRule = attr.fillRule;
@@ -711,13 +726,6 @@ function SVGParser.addShape(self)
 	self.plist = {};
 
 	-- Calculate shape bounds
---[[
-	shape.bounds[0] = shape.paths.bounds[0];
-	shape.bounds[1] = shape.paths.bounds[1];
-	shape.bounds[2] = shape.paths.bounds[2];
-	shape.bounds[3] = shape.paths.bounds[3];
---]]
-
 	for idx, path in ipairs(shape.paths) do 
 		shape.bounds[0] = minf(shape.bounds[0], path.bounds[0]);
 		shape.bounds[1] = minf(shape.bounds[1], path.bounds[1]);
@@ -725,24 +733,25 @@ function SVGParser.addShape(self)
 		shape.bounds[3] = maxf(shape.bounds[3], path.bounds[3]);
 	end
 
---[[
+
 	-- Set fill
-	if (attr.hasFill == 0) {
-		shape.fill.type = NSVG_PAINT_NONE;
+	if (attr.hasFill == 0) then
+		shape.fill.type = PaintType.NONE;
 	elseif (attr.hasFill == 1) then
-		shape.fill.type = NSVG_PAINT_COLOR;
+		shape.fill.type = PaintType.COLOR;
 		shape.fill.color = attr.fillColor;
-		shape.fill.color |= (unsigned int)(attr.fillOpacity*255) << 24;
-	elseif (attr.hasFill == 2) then
-		float inv[6], localBounds[4];
-		xform.xformInverse(inv, attr.xform);
+		shape.fill.color = bor(shape.fill.color, lshift((attr.fillOpacity*255), 24));
+	elseif attr.hasFill == 2 then
+		local inv = ffi.new("double[6]");
+		local localBounds ffi.new("double[4]");
+		transform2D.xformInverse(inv, attr.xform);
 		self:getLocalBounds(localBounds, shape, inv);
-		shape.fill.gradient,  shape.fill.type = self:createGradient(attr.fillGradient, localBounds);
-		if (shape.fill.gradient == NULL) {
-			shape.fill.type = NSVG_PAINT_NONE;
-		}
+		shape.fill.gradient, shape.fill.type = self:createGradient(attr.fillGradient, localBounds);
+		if (shape.fill.gradient == nil) then
+			shape.fill.type = PaintType.NONE;
+		end
 	end
---]]
+
 
 
 	-- Set stroke
@@ -793,18 +802,11 @@ function SVGParser.addPath(self, closed)
 	end
 
 	local path = SVGPath();
-	--path = (NSVGpath*)malloc(sizeof(NSVGpath));
-	--if (path == NULL) goto error;
-	--memset(path, 0, sizeof(NSVGpath));
---[[
-	path.pts = (float*)malloc(self.npts*2*sizeof(float));
-	if (path.pts == NULL) goto error;
---]]
+
 	path.closed = closed;
 	path.npts = #self.pts;
 
 	-- Transform path.
-	--for (i = 0; i < self.npts; ++i)
 	for i, pt in ipairs(self.pts) do
 		pt.x, pt.y = transform2D.xformPoint(pt.x, pt.y, attr.xform);
 		table.insert(path.pts, pt);
@@ -976,40 +978,29 @@ end
 
 
 function SVGParser.parseUnits(self, units)
+--print(".parseUnits: ", units)
 
---[[
-	if (units[0] == 'p' && units[1] == 'x')
-		return NSVGunits.NSVG_UNITS_PX;
-	elseif (units[0] == 'p' && units[1] == 't')
-		return NSVGunits.NSVG_UNITS_PT;
-	elseif (units[0] == 'p' && units[1] == 'c')
-		return NSVGunits.NSVG_UNITS_PC;
-	elseif (units[0] == 'm' && units[1] == 'm')
-		return NSVGunits.NSVG_UNITS_MM;
-	elseif (units[0] == 'c' && units[1] == 'm')
-		return NSVGunits.NSVG_UNITS_CM;
-	elseif (units[0] == 'i' && units[1] == 'n')
-		return NSVGunits.NSVG_UNITS_IN;
-	elseif (units[0] == '%')
-		return NSVGunits.NSVG_UNITS_PERCENT;
-	elseif (units[0] == 'e' && units[1] == 'm')
-		return NSVGunits.NSVG_UNITS_EM;
-	elseif (units[0] == 'e' && units[1] == 'x')
-		return NSVGunits.NSVG_UNITS_EX;
---]]
-	return SVGUnits.USER;
+	local unitConverter = {
+		px = SVGUnits.PX;
+		pt = SVGUnits.PT;
+		pc = SVGUnits.PC;
+		mm = SVGUnits.MM;
+		cm = SVGUnits.CM;
+		["in"] = SVGUnits.IN;
+		["%"] = SVGUnits.PERCENT;
+		em = SVGUnits.EM;
+		ex = SVGUnits.EX;
+	}
+
+	return unitConverter[units] or SVGUnits.USER;
 end
 
 function  SVGParser.parseCoordinateRaw(self, str)
 	local coord = SVGCoordinate({0, SVGUnits.USER});
+--print(".parseCoordinateRaw: ", str)
 
 	--sscanf(str, "%f%s", &coord.value, units);
-	local num, units = str:match("(%d+)?(%g+)")
-	if not units then
-		num = str:match("(%d+)")
-	end
-
---print("parseCoordinateRaw: ", str, num, units);
+	local num, units = str:match("(%d*%.?%d*)(.*)")
 
 	coord.value = tonumber(num);
 	coord.units = self:parseUnits(units);
@@ -1191,7 +1182,8 @@ print("parseUrl - BEGIN: ", id, str)
 end
 
 function SVGParser.parseLineCap(self, str)
-	--return LineCap[str] or LineCap.BUTT;
+	print(".parseLineCap: ", str)
+	--return LineCap[str:upper()] or LineCap.BUTT;
 	
 	if str == "butt" then
 		return LineCap.BUTT;
@@ -1339,8 +1331,8 @@ function SVGParser.parseAttr(self, name, value)
 	elseif name == "offset" then
 		attr.stopOffset = self:parseCoordinate(value, 0.0, 1.0);
 	elseif name == "id" then
-		--strncpy(attr.id, value, 63);
-		--attr.id[63] = '\0';
+		strncpy(attr.id, value, 63);
+		attr.id[63] = 0;
 	else
 		return false;
 	end
@@ -1369,7 +1361,7 @@ function SVGParser.parseAttribs(self, attr)
 end
 
 function SVGParser.pathMoveTo(self, cpx, cpy, args, rel)
-
+--print("pathMoveTo: ", rel, args[1], args[2])
 	if rel then
 		cpx = cpx + args[1];
 		cpy = cpy + args[2];
@@ -1384,13 +1376,16 @@ function SVGParser.pathMoveTo(self, cpx, cpy, args, rel)
 end
 
 function SVGParser.pathLineTo(self, cpx, cpy, args, rel)
+--print(".pathLineTo: ", rel, cpx, cpy, args[1], args[2])
 	if rel then
 		cpx = cpx + args[1];
-		cpy = cpx + args[2];
+		cpy = cpy + args[2];
 	else
 		cpx = args[1];
 		cpy = args[2];
 	end
+
+print("  ", cpx, cpy)
 
 	self:lineTo(cpx, cpy);
 
@@ -1470,6 +1465,7 @@ function SVGParser.pathCubicBezShortTo(self, cpx, cpy,cpx2, cpy2, args, rel)
 		y2 = y2 + cpy;
 	end
 
+
 	cx1 = 2*x1 - cpx2;
 	cy1 = 2*y1 - cpy2;
 
@@ -1546,34 +1542,13 @@ function SVGParser.pathQuadBezShortTo(self, cpx, cpy, cpx2, cpy2, args, rel)
 	return cpx, cpy, cpx2, cpy2;
 end
 
-local function vecrat(ux, uy, vx, vy)
-	return (ux*vx + uy*vy) / (vmag(ux,uy) * vmag(vx,vy));
-end
 
-
-
-local function vecang(ux, uy, vx, vy)
-
-	local r = vecrat(ux,uy, vx,vy);
-	if (r < -1.0) then
-		r = -1.0;
-	end
-
-	if (r > 1.0) then
-		r = 1.0;
-	end
-
-	local acs = acos(r);
-	if (ux*vy < uy*vx) then 
-		return -1.0 * acs;
-	end
-
-	return acs;
-end
 
 
 
 function SVGParser.pathArcTo(self, cpx, cpy, args, rel)
+	print(".pathArcTo: ", cpx, cpy)
+
 --[[
 	// Ported from canvg (https://code.google.com/p/canvg/)
 	float rx, ry, rotx;
@@ -1716,6 +1691,7 @@ function SVGParser.parsePath(self, attr)
 
 	local s = nil;
 	for name,value in pairs(attr) do
+--		print('  ',name, value)
 		if name == "d" then
 			s = value;
 		else
@@ -1740,14 +1716,15 @@ function SVGParser.parsePath(self, attr)
 		for _, args in ipairs(instructions) do
 			local cmd = args[1];
 			table.remove(args,1);
+--print("  CMD: ", cmd, #args)
 
 			-- now, we have the instruction in the 'ins' value
 			-- and the arguments in the cmd table
-			if cmd == "m" or ins == "M" then
+			if cmd == "m" or cmd == "M" then
 				--print("MOVETO:", unpack(args))
 				if #args == 0 then
 					-- Commit path.
-					if (self.npts > 0) then
+					if (#self.pts > 0) then
 						self:addPath(closedFlag);
 					end
 
@@ -1755,12 +1732,23 @@ function SVGParser.parsePath(self, attr)
 					self:resetPath();
 					closedFlag = false;
 				else
+					-- The first set of arguments determine the new current
+					-- location.  After we remove them, the remaining args
+					-- are treated as lineTo
 					cpx, cpy = self:pathMoveTo(cpx, cpy, args, cmd == 'm');
-					-- Moveto can be followed by multiple coordinate pairs,
-					-- which should be treated as linetos.
-					--		cmd = (cmd == 'm') ? 'l' : 'L';
-                    --       rargs = self:getArgsPerElement(cmd);
-                    --        cpx2 = cpx; cpy2 = cpy;
+					table.remove(args)
+					table.remove(args)
+					
+					if #args >=2 then
+
+						while #args >= 2 do
+							cpx, cpy = self:pathLineTo(cpx, cpy, args, cmd == 'm');
+							cpx2 = cpx;
+							cpy2 = cpy;
+							table.remove(args)
+							table.remove(args)
+                		end
+                	end
 				end
 			elseif cmd == "l" or cmd == "L" then
 				--print("LINETO: ", unpack(args))
@@ -1798,7 +1786,7 @@ function SVGParser.parsePath(self, attr)
 			elseif cmd == "z" or cmd == "Z" then
 				closedFlag = true;
 				-- Commit path.
-				if (self.npts > 0) then
+				if (#self.pts > 0) then
 				-- Move current point to first point
 					cpx = self.pts[1].x;
 					cpy = self.pts[1].y;
@@ -1857,7 +1845,7 @@ function SVGParser.parseRect(self, attr)
 	if (rx > w/2.0) then rx = w/2.0; end
 	if (ry > h/2.0) then ry = h/2.0; end
 
-print("RECT: ", x, y, w, h, rx, ry)
+--print("RECT: ", x, y, w, h, rx, ry)
 
 	if w ~= 0 and h ~= 0  then
 		self:resetPath();
@@ -1868,6 +1856,7 @@ print("RECT: ", x, y, w, h, rx, ry)
 			self:lineTo(x+w, y+h);
 			self:lineTo(x, y+h);
 		else 
+			print("ROUNDED RECT")
 --[[
 			-- Rounded rectangle
 			self:moveTo(x+rx, y);
@@ -2008,8 +1997,6 @@ function SVGParser.parsePoly(self, attr, closeFlag)
 
 	self:addShape();
 end
-
-
 
 function SVGParser.parseSVG(self, attrs)
 --print("SVGParser.parseSVG - BEGIN")
