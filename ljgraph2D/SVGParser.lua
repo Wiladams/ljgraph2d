@@ -1668,7 +1668,7 @@ function SVGParser.pathArcTo(self, cpx, cpy, args, rel)
 --[[
 	-- Ported from canvg (https://code.google.com/p/canvg/)
 	float x1p, y1p,
-	float x, y, tanx, tany, a, 
+	float x, y 
 --]]
 
 	local rx = abs(args[1]);				-- y radius
@@ -1797,10 +1797,10 @@ function SVGParser.pathArcTo(self, cpx, cpy, args, rel)
 
 	for i = 0, ndivs  do
 		local a = a1 + da * (i/ndivs);
-		dx = cos(a);
-		dy = sin(a);
-		x, y = transform2D.xformPoint(dx*rx, dy*ry, t); -- position
-		tanx, tany = transform2D.xformVec(-dy*rx * kappa, dx*ry * kappa, t); -- tangent
+		local dx = cos(a);
+		local dy = sin(a);
+		local x, y = transform2D.xformPoint(dx*rx, dy*ry, t); -- position
+		local tanx, tany = transform2D.xformVec(-dy*rx * kappa, dx*ry * kappa, t); -- tangent
 		if i > 0 then
 			self:cubicBezTo(px+ptanx,py+ptany, x-tanx, y-tany, x, y);
 		end
