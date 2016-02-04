@@ -18,11 +18,9 @@ local width = 1024;
 local height = 768;
 
 local graphPort = Raster2D(width,height);
-utils.drawCheckerboard (graphPort.surface, 8, colors.svg.lightgray, colors.svg.white)
+utils.drawCheckerboard (graphPort.surface, 8, colors.svg.darkgray, colors.svg.lightgray)
 
---print("  shapes: ", image.shapes, #image.shapes)
-image:draw(graphPort)
-
+graphPort:drawImage(image, 0,0,1.0)
 
 utils.save(graphPort.surface, "test_svg_parser.bmp");
 

@@ -57,7 +57,6 @@ local vecang = maths.vecang;
 local vmag = maths.vmag;
 
 
-local SVGTypes = require("ljgraph2D.SVGTypes")
 local SVGPath = require("ljgraph2D.SVGPath")
 local SVGShape = require("ljgraph2D.SVGShape")
 local SVGImage = require("ljgraph2D.SVGImage")
@@ -70,6 +69,7 @@ local cos = math.cos;
 
 local RGB = colors.RGBA;
 
+local SVGTypes = require("ljgraph2D.SVGTypes")
 local PaintType = SVGTypes.PaintType;
 local FillRule = SVGTypes.FillRule;
 local Flags = SVGTypes.Flags;
@@ -1579,11 +1579,8 @@ function SVGParser.pathCubicBezShortTo(self, cpx, cpy,cpx2, cpy2, args, rel)
 		y2 = y2 + cpy;
 	end
 
-
 	local cx1 = 2*x1 - cpx2;
 	local cy1 = 2*y1 - cpy2;
-
-	--print(".pathCubicBezShortTo: ", cx1, cy1, cx2, cy2, x2, y2 )
 
 	self:cubicBezTo(cx1,cy1, cx2,cy2, x2,y2);
 
@@ -1687,12 +1684,12 @@ function SVGParser.pathArcTo(self, cpx, cpy, args, rel)
 		fs = true;
 	end
 
-	local x1 = cpx;							-- start point
+	local x1 = cpx;					-- start point
 	local y1 = cpy;
 	local x2 = args[6];
 	local y2 = args[7];
 
-	if rel then							-- end point
+	if rel then						-- end point
 		x2 = x2 + cpx;
 		y2 = y2 + cpy;
 	else
@@ -1818,9 +1815,13 @@ function SVGParser.pathArcTo(self, cpx, cpy, args, rel)
 	return cpx, cpy;
 end
 
-
-
-
+--[[
+	given a 'd' attribute of an svg path element
+	turn that into a table with each command and
+	its arguments represented by their own table.
+	Each command entry has the command itself (a single character)
+	followed by the arguments for that command in subsequent positions
+--]]
 function parseSVGPath(input)
     local out = {};
 

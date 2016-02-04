@@ -148,7 +148,8 @@ static void nsvg__unpremultiplyAlpha(unsigned char* image, int w, int h, int str
 
 
 
-
+--[[
+-- CLEANUP This is already in Raster2D
 void nsvgRasterize(NSVGrasterizer* r,
 				   NSVGimage* image, float tx, float ty, float scale,
 				   unsigned char* dst, int w, int h, int stride)
@@ -235,3 +236,4 @@ void nsvgRasterize(NSVGrasterizer* r,
 	r->height = 0;
 	r->stride = 0;
 }
+--]]

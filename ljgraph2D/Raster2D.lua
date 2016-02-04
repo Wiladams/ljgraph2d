@@ -17,11 +17,27 @@ local maths = require("ljgraph2D.maths")
 local sgn = maths.sgn;
 local round = maths.round;
 local clamp = maths.clamp;
+local pointEquals = maths.pointEquals;
+
 
 local colors = require("ljgraph2D.colors")
 local Surface = require("ljgraph2D.Surface")
 local DrawingContext = require("ljgraph2D.DrawingContext")
+local sort = require("ljgraph2D.sort")
+local qsort = sort.qsort;
+
 local SVGTypes = require("ljgraph2D.SVGTypes")
+local PaintType = SVGTypes.PaintType;
+local FillRule = SVGTypes.FillRule;
+local Flags = SVGTypes.Flags;
+local initPaint = SVGTypes.initPaint;
+local LineCap = SVGTypes.LineCap;
+local LineJoin = SVGTypes.LineJoin;
+local SVGCachedPaint = SVGTypes.SVGCachedPaint;
+local SVGGradientStop = SVGTypes.SVGGradientStop;
+local SVGGradient = SVGTypes.SVGGradient;
+local SVGPaint = SVGTypes.SVGPaint;
+local SVGPoint = SVGTypes.SVGPoint;
 
 
 local int16_t = tonumber;
@@ -85,7 +101,7 @@ local function fillActiveEdges(scanline, len, edges, maxWeight, xmin, xmax, fill
 	-- non-zero winding fill
 	local x0, w  = 0, 0;
 
-	if fillRule == SVGTypes.FillRule.NONZERO then
+	if fillRule == FillRule.NONZERO then
 		-- Non-zero
 		for _, e in ipairs(edges) do
 			if w == 0 then
@@ -102,7 +118,7 @@ local function fillActiveEdges(scanline, len, edges, maxWeight, xmin, xmax, fill
 				end
 			end
 		end
-	elseif (fillRule == NSVG_FILLRULE_EVENODD) then
+	elseif (fillRule == FillRule.EVENODD) then
 		-- Even-odd
 		--while (e ~= NULL) do
 		for _, e in ipairs(edges) do
@@ -117,6 +133,8 @@ local function fillActiveEdges(scanline, len, edges, maxWeight, xmin, xmax, fill
 			end
 		end
 	end
+
+	return xmin, xmax;
 end
 
 
@@ -149,16 +167,18 @@ function Raster2D.init(self, width, height, data)
 
 		SpanBuffer = ffi.new("int32_t[?]", width);
 
-		--tessTol = 0.25;
-		--distTol = 0.01;
+		tessTol = 0.25;
+		distTol = 0.01;
 
 		-- set of points defining current path
 		px = 0;		-- Current cursor location
 		py = 0;		
 
-		--edges = {};
-		--points = {};
+		edges = {};
+		points = {};
+		npoints = 0;
 
+		scanline = ffi.new("uint8_t[?]", width)
 	}
 	setmetatable(obj, Raster2D_mt)
 
@@ -197,243 +217,108 @@ function Raster2D.fillColor(self, value)
 	return self.FillColor;
 end
 
--- Rectangle drawing
-function Raster2D.fillRect(self, x, y, width, height, value)
-	value = value or self.FillColor;
-	local length = width;
-
-	-- fill the span buffer with the specified
-	while length > 0 do
-		self.SpanBuffer[length-1] = value;
-		length = length-1;
-	end
-
-	-- use hspan, since we're doing a srccopy, not an 'over'
-	while height > 0 do
-		self:hspan(x, y+height-1, width, self.SpanBuffer)
-		height = height - 1;
-	end
-end
-
-function Raster2D.frameRect(self, x, y, width, height, value)
-	value = value or self.StrokeColor;
-	-- two horizontals
-	self:hline(x, y, width, value);
-	self:hline(x, y+height-1, width, value);
-
-	-- two verticals
-	self:vline(x, y, height, value);
-	self:vline(x+width-1, y, height, value);
-end
-
--- Text Drawing
-function Raster2D.fillText(self, x, y, text, font, value)
-	value = value or self.FillColor;
-	font:scan_str(rself.surface, x, y, text, value)
-end
 
 
--- Line Drawing
 
+function  Raster2D.addPathPoint(self, x, y, flags)
+	--print(".addPathPoint: ", x, y)
 
--- Line Clipping in preparation for line drawing
-local LN_INSIDE = 0; -- 0000
-local LN_LEFT = 1;   -- 0001
-local LN_RIGHT = 2;  -- 0010
-local LN_BOTTOM = 4; -- 0100
-local LN_TOP = 8;    -- 1000
-
--- Compute the bit code for a point (x, y) using the clip rectangle
--- bounded diagonally by (xmin, ymin), and (xmax, ymax)
-
-local function ComputeOutCode(xmin, ymin, xmax, ymax, x, y)
-
-	--double xmin = rct.x;
-	--double xmax = rct.x + rct.width - 1;
-	--double ymin = rct.y;
-	--double ymax = rct.y + rct.height - 1;
-
-	local code = LN_INSIDE;          -- initialised as being inside of clip window
-
-	if (x < xmin) then           -- to the left of clip window
-		code = bor(code, LN_LEFT);
-	elseif x > xmax then      -- to the right of clip window
-		code = bor(code, LN_RIGHT);
-	end
-
-	if y < ymin then           -- below the clip window
-		code = bor(code, LN_BOTTOM);
-	elseif y > ymax then     -- above the clip window
-		code = bor(code, LN_TOP);
-	end
-
-	return code;
-end
-
--- Cohen–Sutherland clipping algorithm clips a line from
--- P0 = (x0, y0) to P1 = (x1, y1) against a rectangle with 
--- diagonal from (xmin, ymin) to (xmax, ymax).
-local function  clipLine(xmin, ymin, xmax, ymax, x0, y0, x1, y1)
-	--double xmin = bounds.x;
-	--double xmax = bounds.x + bounds.width - 1;
-	--double ymin = bounds.y;
-	--double ymax = bounds.y + bounds.height - 1;
-
-	-- compute outcodes for P0, P1, and whatever point lies outside the clip rectangle
-	local outcode0 = ComputeOutCode(xmin, ymin, xmax, ymax, x0, y0);
-	local outcode1 = ComputeOutCode(xmin, ymin, xmax, ymax, x1, y1);
-
-	local accept = false;
-
-	while true do
-		if (bor(outcode0, outcode1) == 0) then -- Bitwise OR is 0. Trivially accept and get out of loop
-			accept = true;
-			break;
-		elseif band(outcode0, outcode1) ~= 0 then -- Bitwise AND is not 0. Trivially reject and get out of loop
-			break;
-		else
-			-- failed both tests, so calculate the line segment to clip
-			-- from an outside point to an intersection with clip edge
-			local x = 0;
-			local y = 0;
-
-			-- At least one endpoint is outside the clip rectangle; pick it.
-			local outcodeOut = outcode0;
-			if outcodeOut == 0 then
-				outcodeOut = outcode1;
-			end
-
-			-- Now find the intersection point;
-			-- use formulas y = y0 + slope * (x - x0), x = x0 + (1 / slope) * (y - y0)
-			if band(outcodeOut, LN_TOP) ~= 0 then            -- point is above the clip rectangle
-				x = x0 + (x1 - x0) * (ymax - y0) / (y1 - y0);
-				y = ymax;
-			
-			elseif band(outcodeOut, LN_BOTTOM) ~= 0 then -- point is below the clip rectangle
-				x = x0 + (x1 - x0) * (ymin - y0) / (y1 - y0);
-				y = ymin;
-			
-			elseif band(outcodeOut, LN_RIGHT) ~= 0 then  -- point is to the right of clip rectangle
-				y = y0 + (y1 - y0) * (xmax - x0) / (x1 - x0);
-				x = xmax;
-			
-			elseif band(outcodeOut, LN_LEFT) ~= 0 then   -- point is to the left of clip rectangle
-				y = y0 + (y1 - y0) * (xmin - x0) / (x1 - x0);
-				x = xmin;
-			end
-
-			-- Now we move outside point to intersection point to clip
-			-- and get ready for next pass.
-			if (outcodeOut == outcode0) then
-				x0 = x;
-				y0 = y;
-				outcode0 = ComputeOutCode(xmin, ymin, xmax, ymax, x0, y0);
-			
-			else 
-				x1 = x;
-				y1 = y;
-				outcode1 = ComputeOutCode(xmin, ymin, xmax, ymax, x1, y1);
-			end
+	-- If the point is the same as the last point in our
+	-- current set of points, then just set a flag on that
+	-- point, and don't add a new point
+	-- this might be true when your duplicating a point
+	-- a number of times for a curve
+	if #self.points > 0 then
+		local pt = self.points[#self.points];
+		if pointEquals(pt.x,pt.y, x,y, self.distTol) then
+			pt.flags = bor(pt.flags, flags);
+			return;
 		end
 	end
 
-	return accept, x0, y0, x1, y1;
+	local pt = SVGPoint()
+	pt.x = x;
+	pt.y = y;
+	pt.flags = flags;
+	table.insert(self.points, pt)
+
+	return self;
 end
 
+function Raster2D.appendPathPoint(self, pt)
+	table.insert(self.points, pt)
+end
 
--- Arbitrary line using Bresenham
-function Raster2D.line(self, x1, y1, x2, y2, value)
-	--print("Raster2D.line: ", x1, y1, x2, y2)
+function Raster2D.addEdge(self, x0, y0, x1, y1)
+	print(".addEdge: ", x0, y0, x1, y1)
 	
-	local accept, x1, y1, x2, y2 = clipLine(0, 0, self.width-1, self.height-1, x1, y1, x2, y2)
-	
-	-- don't bother drawing line if outside boundary
-	if not accept then 
-		return ;
+	local e = SVGTypes.SVGEdge();
+
+	-- Skip horizontal edges
+	if y0 == y1 then
+		return;
 	end
 
----[[
-	value = value or self.StrokeColor;
-
-	x1 = floor(x1);
-	y1 = floor(y1);
-	x2 = floor(x2);
-	y2 = floor(y2);
-
-	x1 = clamp(x1, 0, self.width);
-	x2 = clamp(x2, 0, self.width);
-	y1 = clamp(y1, 0, self.height);
-	y2 = clamp(y2, 0, self.height);
-
-	--print("line: ", x1, y1, x2, y2)
-
-	local dx = x2 - x1;      -- the horizontal distance of the line
-	local dy = y2 - y1;      -- the vertical distance of the line
-	local dxabs = abs(dx);
-	local dyabs = abs(dy);
-	local sdx = sgn(dx);
-	local sdy = sgn(dy);
-	local x = rshift(dyabs, 1);
-	local y = rshift(dxabs, 1);
-	local px = x1;
-	local py = y1;
-
-	self.surface:pixel(x1, y1, value);
-
-	if (dxabs >= dyabs) then -- the line is more horizontal than vertical
-		for i = 0, dxabs-1 do
-			y = y+dyabs;
-			if (y >= dxabs) then
-				y = y - dxabs;
-				py = py + sdy;
-			end
-			px = px + sdx;
-			self.surface:pixel(px, py, value);
-		end
-	else -- the line is more vertical than horizontal
-		for i = 0, dyabs-1 do
-			x = x + dxabs;
-			if (x >= dyabs) then
-				x = x - dyabs;
-				px = px + sdx;
-			end
-
-			py = py + sdy;
-			self.surface:pixel( px, py, value);
-		end
+	if y0 < y1 then
+		e.x0 = x0;
+		e.y0 = y0;
+		e.x1 = x1;
+		e.y1 = y1;
+		e.dir = 1;
+	else 
+		e.x0 = x1;
+		e.y0 = y1;
+		e.x1 = x0;
+		e.y1 = y0;
+		e.dir = -1;
 	end
---]]
+
+	table.insert(self.edges, e);
 end
 
-function Raster2D.setPixel(self, x, y, value)
-	self.surface:pixel(x, y, value)
+function Raster2D.flattenCubicBez(self,
+								   x1,  y1,  x2,  y2,
+								   x3,  y3,  x4,  y4,
+								  level, atype)
+
+print(".flattenCubicBez: ", x1, y1, x2, y2, x3, y3, x4, y4)
+
+	local x12,y12,x23,y23,x34,y34,x123,y123;
+	local x234,y234,x1234,y1234;
+
+	if level > 10 then 
+		return;
+	end
+
+	local x12 = (x1+x2)*0.5;
+	local y12 = (y1+y2)*0.5;
+	local x23 = (x2+x3)*0.5;
+	local y23 = (y2+y3)*0.5;
+	local x34 = (x3+x4)*0.5;
+	local y34 = (y3+y4)*0.5;
+	local x123 = (x12+x23)*0.5;
+	local y123 = (y12+y23)*0.5;
+
+	local dx = x4 - x1;
+	local dy = y4 - y1;
+	local d2 = abs(((x2 - x4) * dy - (y2 - y4) * dx));
+	local d3 = abs(((x3 - x4) * dy - (y3 - y4) * dx));
+
+	if ((d2 + d3)*(d2 + d3) < self.tessTol * (dx*dx + dy*dy)) then
+		self:addPathPoint(x4, y4, atype);
+		return;
+	end
+
+	local x234 = (x23+x34)*0.5;
+	local y234 = (y23+y34)*0.5;
+	local x1234 = (x123+x234)*0.5;
+	local y1234 = (y123+y234)*0.5;
+
+	self:flattenCubicBez(x1,y1, x12,y12, x123,y123, x1234,y1234, level+1, 0);
+	self:flattenCubicBez(x1234,y1234, x234,y234, x34,y34, x4,y4, level+1, atype);
 end
 
--- Optimized vertical lines
-function Raster2D.vline(self, x, y, length, value)
-	value = value or self.StrokeColor;
-	self.surface:vline(x, y, length, value);
-end
 
-function Raster2D.hline(self, x, y, length, value)
-	value = value or self.StrokeColor;
-	self.surface:hline(x, y, length, value);
-end
-
-function Raster2D.hspan(self, x, y, length, span)
-	self.surface:hspan(x, y, length, span)
-end
-
---[[
-function Raster2D.cubicBezier(self, x1, y1, x2,y2, x3, y3, x4, y4, value)
-	value = value or self.strokeColor;
-
-	self:line(x1, y1, x2,y2, value);
-	self:line(x2,y2,  x3,y3, value);
-	self:line(x3,y3,  x4, y4, value);
-end
---]]
---[[
 function Raster2D.flattenShape(self, shape, scale)
 
 	for _, path in ipairs(shape.paths) do
@@ -453,21 +338,146 @@ function Raster2D.flattenShape(self, shape, scale)
 		self:addPathPoint(path.pts[1].x*scale, path.pts[1].y*scale, 0);
 
 		-- Build edges
-		for (i = 0, j = r->npoints-1; i < r->npoints; j = i++) do
+		local i = 1;
+		local j = #self.points
+		while ( i < #self.points) do
 			self:addEdge(self.points[j].x, self.points[j].y, self.points[i].x, self.points[i].y);
+			j = i;
+			i = i + 1;
 		end
 	end
 end
+
+
+function Raster2D.rasterizeSortedEdges(self, tx, ty, scale, cache, fillRule)
+
+	--NSVGactiveEdge *active = NULL;
+	--int y, s;
+	local e = 0;
+	local maxWeight = (255 / SVG__SUBSAMPLES);  -- weight per vertical scanline
+
+	for y = 0, self.height-2  do
+
+		ffi.fill(self.scanline, 0, self.width);
+		local xmin = self.width;
+		local xmax = 0;
+--[[
+		for s = 0, SVG__SUBSAMPLES-1 do
+			-- find center of pixel for this scanline
+			local scany = y*SVG__SUBSAMPLES + s + 0.5;
+			NSVGactiveEdge **step = &active;
+
+			-- update all active edges;
+			-- remove all active edges that terminate before the center of this scanline
+			while (*step) do
+				NSVGactiveEdge *z = *step;
+				if (z->ey <= scany) {
+					*step = z->next; // delete from list
+					freeActive(r, z);
+				else
+					z->x += z->dx; // advance to position for current scanline
+					step = &((*step)->next); // advance through list
+				end
+			end
+
+			-- resort the list if needed
+			while (true) do
+				local changed = false;
+				step = &active;
+				while (*step and (*step)->next) do
+					if ((*step).x > (*step).next.x) then
+						NSVGactiveEdge* t = *step;
+						NSVGactiveEdge* q = t.next;
+						t.next = q.next;
+						q.next = t;
+						*step = q;
+						changed = true;
+					end
+					step = &(*step)->next;
+				end
+				
+				if changed then
+					break;
+				end
+			end
+
+			-- insert all edges that start before the center of this scanline -- omit ones that also end on this scanline
+			while (e < r->nedges && r->edges[e].y0 <= scany) do
+				if (r->edges[e].y1 > scany) then
+					NSVGactiveEdge* z = nsvg__addActive(r, &r->edges[e], scany);
+					if (z == NULL) then
+						break;
+					end
+
+					-- find insertion point
+					if (active == NULL) then
+						active = z;
+					elseif (z->x < active->x) then
+						-- insert at front
+						z->next = active;
+						active = z;
+					else
+						-- find thing to insert AFTER
+						NSVGactiveEdge* p = active;
+						while (p->next && p->next->x < z->x) do
+							p = p->next;
+						end
+
+						-- at this point, p->next->x is NOT < z->x
+						z->next = p->next;
+						p->next = z;
+					end
+				end
+				e++;
+			end
+
+			-- now process all active edges in non-zero fashion
+			if (active ~= nil) then
+				xmin, xmax = fillActiveEdges(self.scanline, self.width, active, maxWeight, xmin, xmax, fillRule);
+			end
+		end
+
+		-- Blit
+		if (xmin < 0) then
+			xmin = 0;
+		end
+		
+		if (xmax > self.width-1) then
+			xmax = self.width-1;
+		end
+
+		if (xmin <= xmax) then
+			--self.surf:scanlineSolid(&r->bitmap[y * r->stride] + xmin*4, xmax-xmin+1, &r->scanline[xmin], xmin, y, tx,ty, scale, cache);
+		end
 --]]
+	end
 
---[=[
+end
+
+local function cmpEdge(a, b)
+
+	--NSVGedge* a = (NSVGedge*)p;
+	--NSVGedge* b = (NSVGedge*)q;
+
+	if (a.y0 < b.y0) then
+		return -1;
+	end
+
+	if (a.y0 > b.y0) then
+		return  1;
+	end
+
+	return 0;
+end
+
+
 function Raster2D.drawImage(self, image, tx, ty, scale)
-
+print(".drawImage: ", image, image.shapes, #image.shapes)
 --				   unsigned char* dst, int w, int h, int stride)
 
 	--NSVGshape *shape = NULL;
 	--NSVGedge *e = NULL;
-	--NSVGcachedPaint cache;
+	local cache = SVGCachedPaint();
 	--int i;
 
 	--r->bitmap = dst;
@@ -489,30 +499,33 @@ function Raster2D.drawImage(self, image, tx, ty, scale)
 		--	continue;
 
 		if shape.fill.type ~= PaintType.NONE then
-			nsvg__resetPool(r);
-			self.freelist = nil;
-			r.nedges = 0;
+			--self:resetPool();
+			self.freelist = {};
 
 			self:flattenShape(shape, scale);
 
 			-- Scale and translate edges
-			for (i = 0; i < r->nedges; i++) {
-				e = &r->edges[i];
-				e->x0 = tx + e->x0;
-				e->y0 = (ty + e->y0) * NSVG__SUBSAMPLES;
-				e->x1 = tx + e->x1;
-				e->y1 = (ty + e->y1) * NSVG__SUBSAMPLES;
-			}
+			for i, e in ipairs(self.edges) do
+				e.x0 = tx + e.x0;
+				e.y0 = (ty + e.y0) * SVG__SUBSAMPLES;
+				e.x1 = tx + e.x1;
+				e.y1 = (ty + e.y1) * SVG__SUBSAMPLES;
+
+				-- BUGBUG - just to see something
+				self.surface:line(e.x0, e.y0, e.x1, e.y1, shape.fill.color)
+			end
 
 			-- Rasterize edges
-			qsort(r->edges, r->nedges, sizeof(NSVGedge), nsvg__cmpEdge);
+			qsort(self.edges,1,#self.edges,cmpEdge)
+			--qsort(r->edges, r->nedges, sizeof(NSVGedge), nsvg__cmpEdge);
 
 			-- now, traverse the scanlines and find the intersections on each scanline, use non-zero rule
-			initPaint(&cache, &shape->fill, shape->opacity);
+			cache, shape.fill = initPaint(cache, shape.fill, shape.opacity);
 
-			self:rasterizeSortedEdges(tx,ty,scale, &cache, shape->fillRule);
+			self:rasterizeSortedEdges(tx,ty,scale, cache, shape.fillRule);
 		end
 
+--[[
 		if (shape->stroke.type != NSVG_PAINT_NONE && (shape->strokeWidth * scale) > 0.01f) {
 			nsvg__resetPool(r);
 			r->freelist = NULL;
@@ -539,15 +552,16 @@ function Raster2D.drawImage(self, image, tx, ty, scale)
 
 			nsvg__rasterizeSortedEdges(r, tx,ty,scale, &cache, NSVG_FILLRULE_NONZERO);
 		}
-	}
+--]]
+	end
 
-	nsvg__unpremultiplyAlpha(dst, w, h, stride);
+	--nsvg__unpremultiplyAlpha(dst, w, h, stride);
 
-	r->bitmap = NULL;
-	r->width = 0;
-	r->height = 0;
-	r->stride = 0;
+	--r->bitmap = NULL;
+	--r->width = 0;
+	--r->height = 0;
+	--r->stride = 0;
 end
---]=]
+
 
 return Raster2D

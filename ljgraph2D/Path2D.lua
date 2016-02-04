@@ -76,60 +76,12 @@ function Path2D.new(self, ...)
 	return self:init(...)
 end
 
-function  Path2D.addPathPoint(self, x, y, flags)
-
-	-- If the point is the same as the last point in our
-	-- current set of points, then just set a flag on that
-	-- point, and don't add a new point
-	-- this might be true when your duplicating a point
-	-- a number of times for a curve
-	if #self.points > 0 then
-		local pt = self.points[#self.points];
-		if pointEquals(pt.x,pt.y, x,y, self.distTol) then
-			pt.flags = bor(pt.flags, flags);
-			return;
-		end
-	end
-
-	local pt = SVGTypes.SVGPoint()
-	pt.x = x;
-	pt.y = y;
-	pt.flags = flags;
-	table.insert(self.points, pt)
-
-	return self;
-end
-
-function Path2D.appendPathPoint(self, pt)
-	table.insert(self.points, pt)
-end
 
 
-function Path2D.addEdge(self, x0, y0, x1, y1)
 
-	local e = SVGTypes.SVGEdge();
 
-	-- Skip horizontal edges
-	if y0 == y1 then
-		return;
-	end
 
-	if y0 < y1 then
-		e.x0 = x0;
-		e.y0 = y0;
-		e.x1 = x1;
-		e.y1 = y1;
-		e.dir = 1;
-	else 
-		e.x0 = x1;
-		e.y0 = y1;
-		e.x1 = x0;
-		e.y1 = y0;
-		e.dir = -1;
-	end
 
-	table.insert(self.edges, e);
-end
 
 
 function Path2D.flattenCubicBez(self,
