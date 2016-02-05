@@ -115,7 +115,7 @@ function FileStream:writeString(str, count, offset)
 	count = count or #str
 	local strptr = ffi.cast("char *", str);
 
-	return self:WriteBytes(strptr, count, offset)
+	return self:writeBytes(strptr, count, offset)
 end
 
 return FileStream;
