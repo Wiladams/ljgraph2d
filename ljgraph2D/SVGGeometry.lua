@@ -14,6 +14,7 @@ local Document_mt = {
 function Document.init(self, params)
 	local obj = params or {}
 	obj.Shapes = obj.Shapes or {}
+	obj.xmlns = obj.xmlns or 'http://www.w3.org/2000/svg';
 
 	setmetatable(obj, Document_mt);
 
@@ -45,7 +46,52 @@ function Document.write(self, strm)
 	strm:closeElement("svg");
 end
 
+local Style = {}
+setmetatable(Style, {
+	__call = function(self, ...)
+		return self:new(...);
+	end,
+})
 
+local Style_mt = {
+	__index = Style;
+
+	__tostring = function(self)
+		return self:toString();
+	end
+}
+
+function Style.init(self, params)
+	local obj = params or {}
+	setmetatable(obj, Style_mt);
+
+	return obj;
+end
+
+function Style.new(self, params)
+	return self:init(params);
+end
+
+function Style.toString(self)
+	local res = {}
+	
+	for name, value pairs(self) do
+		table.insert(res, name..":"..value)
+	end
+	
+	local ret = table.concat(res, ';');
+
+	return ret;
+end
+
+function Style.addAttribute(self, name, value)
+	self[name] = value;
+end
+
+
+--[[
+	Actual Geometry Elements
+--]]
 --[[
 	Rect
 	x - left
@@ -85,10 +131,10 @@ end
 function Rect.write(self, strm)
 	strm:openElement("rect")
 	for name, value in pairs(self) do
-		if type(value) == "string" or
-			type(value) == "number" then
-			strm:addAttribute(name, value);
-		end
+		--if type(value) == "string" or
+		--	type(value) == "number" then
+			strm:addAttribute(name, tostring(value));
+		--end
 	end
 
 	strm:closeElement();
@@ -100,7 +146,7 @@ end
 
 
 return {
-	Document = Document;
+	Document = Document;	-- check
 	Group = Group;
 	Stroke = Stroke;
 	Fill = Fill;
@@ -113,7 +159,8 @@ return {
 	Polygon = Polygon;
 	PolyLine = PolyLine;
 	Path = Path;
-	Rect = Rect;
+	Rect = Rect;			-- check
+	Style = Style;			-- initial
 	Text = Text;
 	TextPath = TextPath;
 	TRef = TRef;
