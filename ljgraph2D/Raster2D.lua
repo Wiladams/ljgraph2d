@@ -455,10 +455,6 @@ function Raster2D.rasterizeSortedEdges(self, tx, ty, scale, cache, fillRule)
 end
 
 local function cmpEdge(a, b)
-
-	--NSVGedge* a = (NSVGedge*)p;
-	--NSVGedge* b = (NSVGedge*)q;
-
 	if (a.y0 < b.y0) then
 		return -1;
 	end
@@ -498,6 +494,7 @@ print(".drawImage: ", image, image.shapes, #image.shapes)
 		--if (band(shape.flags, Flags.VISIBLE) == 0)
 		--	continue;
 
+--print(".drawImage, shape.fill.type: ", shape.fill.type)
 		if shape.fill.type ~= PaintType.NONE then
 			--self:resetPool();
 			self.freelist = {};
@@ -512,7 +509,7 @@ print(".drawImage: ", image, image.shapes, #image.shapes)
 				e.y1 = (ty + e.y1) * SVG__SUBSAMPLES;
 
 				-- BUGBUG - just to see something
-				self.surface:line(e.x0, e.y0, e.x1, e.y1, shape.fill.color)
+				--self.surface:line(e.x0, e.y0, e.x1, e.y1, shape.fill.color)
 			end
 
 			-- Rasterize edges

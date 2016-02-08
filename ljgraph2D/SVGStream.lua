@@ -26,9 +26,9 @@ function SVGStream.new(self, baseStream)
 end
 
 function SVGStream.openElement(self, elName)
-	if self.CurrentOpenTag then
-		self:closeTag();
-	end
+	--if self.CurrentOpenTag then
+	--	self:closeTag();
+	--end
 
 	self.CurrentOpenTag = elName;
 	self.BaseStream:writeString("<"..elName)
@@ -57,5 +57,8 @@ function SVGStream.closeElement(self, elName)
 
 end
 
+function SVGStream.write(self, str)
+	self.BaseStream:writeString(str);
+end
 
 return SVGStream
