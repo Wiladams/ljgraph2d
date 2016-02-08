@@ -13,7 +13,7 @@ local Document_mt = {
 
 function Document.init(self, params)
 	local obj = params or {}
-	obj.Shapes = obj.Shapes or {}
+	--obj.Shapes = obj.Shapes or {}
 	obj.xmlns = obj.xmlns or 'http://www.w3.org/2000/svg';
 
 	setmetatable(obj, Document_mt);
@@ -26,7 +26,7 @@ function Document.new(self, ...)
 end
 
 function Document.addShape(self, shape)
-	table.insert(self.Shapes, shape);
+	table.insert(self, shape);
 end
 
 function Document.write(self, strm)
@@ -34,15 +34,16 @@ function Document.write(self, strm)
 
 	strm:openElement("svg");
 	for name, value in pairs(self) do
-		if type(value) == "string" or
-			type(value) == "number" then
-			strm:addAttribute(name, value);
+		if type(value) ~= "table" then
+			strm:addAttribute(name, tostring(value));
 		end
 	end
 	strm:closeTag();
 
-	for _, shape in ipairs(self.Shapes) do
-		shape:write(strm);
+	for _, value in pairs(self) do
+		if type(value) == "table" then
+			value:write(strm);
+		end
 	end
 
 	strm:closeElement("svg");
@@ -71,7 +72,7 @@ local Group_mt = {
 
 function Group.init(self, params)
 	local obj = params or {}
-	obj.Shapes = obj.Shapes or {}
+	--obj.Shapes = obj.Shapes or {}
 
 	setmetatable(obj, Group_mt);
 
@@ -83,21 +84,25 @@ function Group.new(self, ...)
 end
 
 function Group.addShape(self, shape)
-	table.insert(self.Shapes, shape);
+	table.insert(self, shape);
 end
 
 function Group.write(self, strm)
 	strm:openElement("g");
+
+	-- write things as attributes of the opening tag
 	for name, value in pairs(self) do
-		if type(value) == "string" or
-			type(value) == "number" then
-			strm:addAttribute(name, value);
+		if type(value) ~= "table" then
+			strm:addAttribute(name, tostring(value));
 		end
 	end
 	strm:closeTag();
 
-	for _, shape in ipairs(self.Shapes) do
-		shape:write(strm);
+	-- now go through looking for shapes
+	for name, value in pairs(self) do
+		if type(value) == "table" then
+			value:write(strm);
+		end
 	end
 
 	strm:closeElement("g");

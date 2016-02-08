@@ -42,31 +42,28 @@ local function test_geom(filename)
 		version="1.1", 
 		width = "12cm", height= "4cm", 
 		viewBox="0 0 1200 400",
-		Shapes = {
-			-- Show outline of canvas using 'rect' element
-			rect({x = 1;y = 1;width = 1198; height = 398;
+		
+		-- Show outline of canvas using 'rect' element
+		rect({x = 1;y = 1;width = 1198; height = 398;
 				fill = "none";
 				stroke = "blue";
 				["stroke-width"] = 2;
-			});
+		});
 
-			group({
+		group({
 				transform = "translate(300 200)";
-				Shapes = {
-					ellipse({fill="red"; rx=250, ry=100});
-				};
-			});
 
-			ellipse({
+				ellipse({fill="red"; rx=250, ry=100});
+		});
+
+		ellipse({
 				fill = "none";
 				stroke = "blue";
 				["stroke-width"] = 20;
 				transform="translate(900 200) rotate(-30)";
 				rx = 250;
 				ry = 100;
-			});
-
-		}
+		});
 	})
 
 	-- create a file stream to write out the image
