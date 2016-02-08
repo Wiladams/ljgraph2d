@@ -50,6 +50,57 @@ function Document.write(self, strm)
 end
 
 --[[
+
+--]]
+local Definitions = {}
+setmetatable(Definitions, {
+	__call = function(self, ...)
+		return self:new(...);
+	end,
+	})
+local Definitions_mt = {
+	__index = Definitions;
+}
+
+function Definitions.init(self, params)
+	local obj = params or {}
+	--obj.Shapes = obj.Shapes or {}
+
+	setmetatable(obj, Definitions_mt);
+
+	return obj;
+end
+
+function Definitions.new(self, ...)
+	return self:init(...)
+end
+
+function Definitions.addShape(self, shape)
+	table.insert(self, shape);
+end
+
+function Definitions.write(self, strm)
+	strm:openElement("defs");
+
+	-- write things as attributes of the opening tag
+	for name, value in pairs(self) do
+		if type(value) ~= "table" then
+			strm:addAttribute(name, tostring(value));
+		end
+	end
+	strm:closeTag();
+
+	-- now go through looking for shapes
+	for name, value in pairs(self) do
+		if type(value) == "table" then
+			value:write(strm);
+		end
+	end
+
+	strm:closeElement("defs");
+end
+
+--[[
 	Group
 
 	A group is like a document in that it is a container, 
@@ -423,29 +474,111 @@ function Rect.write(self, strm)
 	strm:closeElement();
 end
 
--- Parse a definition from the stream
-function Rect.read(self, strm)
+
+--[[
+	Text
+--]]
+local Text = {}
+setmetatable(Text, {
+	__call = function(self, ...)
+		return self:new(...);
+	end,
+	})
+local Text_mt = {
+	__index = Text;
+}
+
+function Text.init(self, params, text)
+	local obj = params or {}
+	setmetatable(obj, Text_mt)
+
+	obj.Text = obj.Text or text;
+
+	return obj;
+end
+
+function Text.new(self, params, text)
+	return self:init(params, text);
+end
+
+function Text.write(self, strm)
+	strm:openElement("text")
+
+	for name, value in pairs(self) do
+		if name ~= "Text" then
+			strm:addAttribute(name, tostring(value));
+		end
+	end
+	strm:closeTag();
+
+	-- write out the text context
+	if self.Text then
+		strm:write(self.Text)
+	end
+
+	strm:closeElement("text");
 end
 
 
+--[[
+--]]
+local Use = {}
+setmetatable(Use, {
+	__call = function(self, ...)
+		return self:new(...);
+	end,
+	})
+
+local Use_mt = {
+	__index = Use;
+}
+
+function Use.init(self, params)
+	local obj = params or {}
+	setmetatable(obj, Use_mt);
+
+	return obj;
+end
+
+function Use.new(self, params)
+	return self:init(params);
+end
+
+-- write ourself out as an SVG string
+function Use.write(self, strm)
+	strm:openElement("use")
+	for name, value in pairs(self) do
+			strm:addAttribute(name, tostring(value));
+	end
+
+	strm:closeElement();
+end
+
+
+
+--[[
+	Interface exposed to outside world
+--]]
 return {
-	Document = Document;	-- check
-	Group = Group;
+	Document = Document;		-- check
+	Definitions = Definitions;	-- check
+	Group = Group;				-- check
 	Stroke = Stroke;
 	Fill = Fill;
 
-	Circle = Circle;
-	Ellipse = Ellipse;
+	Circle = Circle;			-- check
+	Ellipse = Ellipse;			-- check
 	Image = Image;
-	Line = Line;
+	Line = Line;				-- check
 	Marker = Marker;
-	Polygon = Polygon;
-	PolyLine = PolyLine;
+	Polygon = Polygon;			-- check
+	PolyLine = PolyLine;		-- check
 	Path = Path;
-	Rect = Rect;			-- check
-	Style = Style;			-- initial
-	Text = Text;
+	Rect = Rect;				-- check
+	Style = Style;				-- initial
+	Text = Text;				-- check
 	TextPath = TextPath;
 	TRef = TRef;
 	TSpan = TSpan;
+	Use = Use;
 }
